@@ -1,0 +1,24 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# build
+dist/
+build/
+.next/
+out/
+contracts/out/
+contracts/cache/
+contracts/broadcast/**/dry-run/
+subgraph/generated/
+subgraph/build/
+
+# misc
+.DS_Store
+*.log
+*.tsbuildinfo
