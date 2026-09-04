@@ -1,6 +1,6 @@
 # ArcAsset
 
-Autonomous agents that service tokenized private credit on Arc under bounded authority, and sell what they learn.
+Autonomous agents that service tokenized private credit on Arc for verified-human issuers, and sell what they learn.
 
 Built from scratch at ETHOnline 2026 (Sep 4–13) by Furqaan and Apurva.
 
@@ -8,7 +8,7 @@ Built from scratch at ETHOnline 2026 (Sep 4–13) by Furqaan and Apurva.
 
 - **Arc** — settlement in native USDC: notes, coupons, per-query payments
 - **The Graph** — subgraph on Subgraph Studio as the read layer, the agent's decision surface, and the data product
-- **Privy** — embedded wallets for issuers, policy-bound server wallet for the servicing agent
+- **World** — Selfie Check as a live-human eligibility and abuse-prevention signal for issuers before they can mint notes or delegate servicing
 
 ## Layout
 
