@@ -54,12 +54,29 @@ Three things the UI must do that the contract deliberately does not:
   amounts, rendered before signing. It is the last chance to catch a wrong
   `periodLength`.
 
-Also required: the **agreement document**. Upload it, hash it client-side, and
-show the hash — the borrower and the admin both check that the hash they are
-looking at is the hash of the file they read. Nothing mints without one.
+Also required: the **agreement documents**, plural. The originator uploads every
+document behind the loan — see [09 — Backend](09-backend.md#document-lifecycle).
+Uploading is not optional and not deferrable: without the files the admin has
+nothing to review, and the approval step is the reason they exist.
 
-Submit → `IssuanceQueue.propose` → redirect to `/proposal/[id]`. Nothing is
-deployed yet; do not show a note address, because there isn't one.
+The upload panel shows each file with its size and content hash, and the
+manifest hash over the set. Hashes are shown, not tucked behind a tooltip: the
+borrower and the admin are both being asked to vouch for a specific set of
+bytes, and the manifest hash is what they will see on-chain.
+
+Two-step submit, and the order matters:
+
+1. **Seal** the draft (`POST /documents/drafts/:id/seal`) → returns the manifest
+   hash and URI. After this the files are frozen.
+2. **Propose** on-chain with that hash, from the originator's own wallet.
+
+Between the two the user can walk away, so `/propose` must be resumable: a
+sealed draft that never reached the chain is shown on return with its hash and a
+"propose" button, not silently orphaned. Do not merge the steps into one
+optimistic flow — the hash must exist before the transaction is built.
+
+Redirect to `/proposal/[id]` once the tx lands. Nothing is deployed yet; do not
+show a note address, because there isn't one.
 
 Buying and repayment are native value transfers, so there is **no approval
 step** — one transaction, not two. Do not build an allowance UI.
@@ -73,9 +90,15 @@ agreed to, not with a button.
 - Where in `Proposed → Accepted → Approved → Minted` this sits, and who is
   being waited on. A proposal is a queue position; say whose turn it is.
 - Who is asserting this (originator address, their book record if any).
-- The agreement: a link to the document and its hash, shown, not hidden behind
-  a tooltip. Both the borrower and the admin are being asked to vouch for a
-  specific file.
+- The agreement: every document, each with its own hash, plus the manifest hash
+  that is actually on-chain. Both the borrower and the admin are being asked to
+  vouch for a specific set of bytes.
+
+  Files open through a short-lived signed URL and only for the originator, the
+  borrower and the admin. Everyone else sees the filenames, sizes and hashes and
+  cannot open them. Say that on the page rather than rendering a link that
+  403s — "you cannot read this, and here is what you can still verify" is a
+  different message from a broken button.
 - The full obligation: principal, every period, total repayable, maturity.
 - The deadline, absolute and relative. Past it, the note is dead and the page
   says so rather than offering a button that will revert.

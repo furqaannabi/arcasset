@@ -18,6 +18,7 @@ the same commit, don't leave them diverged.
 | 06 | [Web](06-web.md) | Screens, states, empty and error cases |
 | 07 | [Identity](07-identity.md) | World Selfie Check, eligibility, abuse model |
 | 08 | [Milestones](08-milestones.md) | Day-by-day plan, demo script, cut lines |
+| 09 | [Backend](09-backend.md) | Document upload, Postgres schema, R2, auth |
 
 ## Status legend
 

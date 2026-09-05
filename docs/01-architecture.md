@@ -42,14 +42,21 @@
                                  ▲
                                  │ settle
                        ┌──────────────────┐
-                       │  ServicingRelay  │◄─writes──┐
-                       └──────────────────┘          │
-                                                ┌─────────────────┐
-  all contracts ──emit events──►                │ Servicing agent │
-                       ┌──────────────────┐     │  (Bun + Hono)   │
-                       │    Subgraph      │◄────┤                 │
-                       │  (The Graph)     │reads└─────────────────┘
-                       └────────┬─────────┘
+                       │  ServicingRelay  │◄──writes──┐
+                       └──────────────────┘           │
+                                                      │
+  all contracts ──emit events──►             ┌────────┴──────────┐
+                       ┌──────────────────┐  │      Backend      │
+                       │    Subgraph      │◄─┤   (Bun + Hono)    │
+                       │  (The Graph)     │  │ agent · intel ·   │
+                       └────────┬─────────┘  │ documents         │
+                                │       reads└──┬─────────────┬──┘
+                                │               │             │
+                                │        ┌──────┴─────┐ ┌─────┴────┐
+                                │        │  Postgres  │ │    R2    │
+                                │        │  drafts,   │ │  agree-  │
+                                │        │  sessions  │ │  ments   │
+                                │        └────────────┘ └──────────┘
                                 ├──────► web UI
                                 ▼
                        ┌──────────────────┐  pay per query (USDC on Arc)
@@ -68,6 +75,13 @@ a replacement agent with the same delegation resumes from the subgraph.
 **Read path.** The subgraph. The agent, the web UI, and the intel API all read
 the same subgraph. No component keeps a shadow copy of note state.
 
+Postgres is not an exception to this. It holds agreement documents, upload
+metadata, wallet sessions, and the draft a proposal existed as before it reached
+the chain — things with no on-chain representation that cannot have one. It
+holds no note, period, repayment or position state, and adding a `notes` table
+for a convenient query would be a second source of truth that drifts the first
+time an event is missed. See [09 — Backend](09-backend.md#what-the-database-is-allowed-to-hold).
+
 The one deliberate exception: the intel API caches subgraph responses in memory
 (TTL 30s) so a burst of paid queries doesn't hammer the indexer. Cache is
 read-through and never authoritative.
@@ -84,6 +98,8 @@ read-through and never authoritative.
 | Agent → ServicingRelay | Period settlement calls | Agent key is hot. Relay bounds what it can do — see below |
 | Subgraph → agent | Note and period state | Indexer may lag. Agent must tolerate lag, never assume freshness |
 | Buyer → /intel | Payment then query | Payment is verified on-chain before the response is served |
+| Uploader → R2 | Agreement documents | The server hashes what it receives and stores its own hash. A client-supplied hash is never trusted, or an originator could register one file's hash against another's bytes |
+| Reader → documents | A wallet session | Only originator, borrower and admin read contents. Everyone can verify the hash; nobody else can read the paper |
 
 ### The agent key is hot, so the relay is narrow
 

@@ -87,8 +87,8 @@ enum ProposalStatus { Proposed, Accepted, Approved, Minted, Rejected, Expired }
 struct Proposal {
     address originator;
     Terms   terms;
-    bytes32 documentHash;   // keccak256 of the agreement package
-    string  documentURI;    // where a reviewer fetches it
+    bytes32 documentHash;   // manifest hash over every uploaded document
+    string  documentURI;    // manifest.json; where a reviewer fetches them
     ProposalStatus status;
     uint64  proposedAt;
     uint64  acceptedAt;
@@ -144,10 +144,14 @@ rule can perform, which is why it justifies a human in the path — and why the
 admin's power is confined to blocking.
 
 **What the chain can and cannot attest.** It records that an admin approved a
-document with a given hash at a given time. It cannot attest the document is
-genuine, that it says what the terms claim, or that the reviewer read it. The
-hash binds the artifact to the note; the rest is a human's judgement, recorded
-and attributable, and should never be described as more than that.
+set of documents with a given manifest hash at a given time. It cannot attest
+they are genuine, that they say what the terms claim, or that the reviewer read
+them. The hash binds the artifacts to the note; the rest is a human's judgement,
+recorded and attributable, and should never be described as more than that.
+
+Anyone can check the binding — fetch the files, recompute the manifest hash,
+compare. Anyone can check *what* was approved. Only the originator, borrower and
+admin can read the contents.
 
 **Checks on `propose`**
 
@@ -155,7 +159,11 @@ and attributable, and should never be described as more than that.
 - `PartyRegistry.isVerified(terms.borrower)` — else `BorrowerNotVerified()`.
 - `terms.borrower != msg.sender` — else `SelfDealing()`. Combined with one
   address per nullifier, this is what makes the two parties two people.
-- `documentHash != 0` — else `NoDocument()`.
+- `documentHash != 0` — else `NoDocument()`. It is a manifest hash over *all*
+  the agreement documents, not one file: `keccak256` of every document's content
+  hash, sorted ascending and concatenated. Construction and the reasoning behind
+  it are in [09 — Backend](09-backend.md#the-manifest-hash); the contract only
+  ever sees the root.
 - `acceptDeadline > block.timestamp`.
 - `periodCount >= 1`, `periodLength >= 1 minutes`, `principal > 0`,
   `couponBps <= 5000`, `servicingFeeBps <= 500`.
@@ -447,7 +455,7 @@ event Defaulted(uint256 indexed noteId, uint16 periodsMissed, uint64 timestamp);
 | `markDelinquent` | `block.timestamp <= periodEnd + gracePeriod` → `WithinGrace()` |
 | | period already settled → `AlreadySettled()` |
 | `markDefaulted` | no missed period older than `cureWindow` → `CureWindowOpen()` |
-| all | note is `Matured`/`Defaulted`/`Cancelled` → `NoteTerminal()` |
+| all | note is `Matured`/`Defaulted` → `NoteTerminal()` |
 
 Servicing fee is `amount * servicingFeeBps / 10_000`, paid to
 `terms.feeRecipient` — read from the note, never from `msg.sender`.

@@ -4,6 +4,24 @@
 
 ETHOnline 2026, Sep 4–13. Two people: Furqaan, Apurva. Today is **Sep 5**.
 
+## Scope added on Sep 5
+
+Three decisions on day 2 roughly doubled the build, and pretending otherwise is
+how Sep 13 arrives with nothing deployed:
+
+- Three-party issuance with borrower acceptance — `IssuanceQueue`, a six-state
+  proposal lifecycle, digest binding.
+- Admin approval of documents — a reviewer role, and everything below.
+- Document upload — Postgres, Prisma, R2, wallet sessions, a seal step, and a
+  review UI. This is a service, not an endpoint.
+- The `Offering` contract.
+
+None of it is wrong; the model is much closer to real private credit than it was
+that morning. But the schedule underneath it has not moved, and `contracts/`
+still does not exist as a directory. If Sep 7 arrives without a full lifecycle
+passing on Anvil, cut from the list below rather than compressing the agent —
+the agent settling unattended is the submission.
+
 ## Where we actually are
 
 End of Sep 5: specs settled, `web/` scaffolded and building, nothing on-chain.
@@ -25,8 +43,8 @@ built against fixed interfaces, not against each other's progress.
 | **Sep 5** | Specs (this folder). Foundry + Next.js + subgraph skeletons compile and run empty | ✅ Specs done, `web/` scaffolded and green (typecheck, lint, build, 9 tests). ⚠️ `contracts/` and `subgraph/` skeletons still missing — carry to Sep 6 |
 | **Sep 6** | `PartyRegistry`, `IssuanceQueue` (propose/accept/approve/mint), `NoteFactory`, `RWANote` funding path. Web: `/proposal/[id]` | A proposal can be accepted by a second wallet, approved by a third, minted, and funded on Anvil from the UI |
 | **Sep 7** | `Offering` (list/reprice/delist/buy), `RepaymentVault`, `ServicingRelay`, claims. Guard tests from [02](02-contracts.md#guards--every-one-of-these-is-a-test) | Full lifecycle passes in Foundry: issue → fund → repay → settle → claim |
-| **Sep 8** | Subgraph: all entities and handlers, local `graph-node` | Every entity in [03](03-subgraph.md#entities) populates from a seeded fixture run |
-| **Sep 9** | Agent decision loop + safety rails. `/note/[address]` | Agent settles a period unattended on Anvil; `/health` reports lag correctly |
+| **Sep 8** | Backend skeleton: Prisma schema, Postgres, R2, wallet sessions, document upload + seal. Subgraph: all entities and handlers, local `graph-node` | Every entity in [03](03-subgraph.md#entities) populates from a seeded fixture run |
+| **Sep 9** | Agent decision loop + safety rails. Document review UI on `/proposal/[id]`. `/note/[address]` | Agent settles a period unattended on Anvil; `/health` reports lag correctly |
 | **Sep 10** | Deploy to Arc testnet, subgraph to Studio, seed history | Real notes with real repayment history are indexed and visible |
 | **Sep 11** | Intel API: three endpoints, 402 flow, payment verification. `/intel` storefront | A stranger's wallet can pay and get a response end-to-end |
 | **Sep 12** | World Selfie Check wired live. `/agent` console. Buffer | Verification gates issuance on testnet |
@@ -37,14 +55,18 @@ built against fixed interfaces, not against each other's progress.
 If we are behind, cut in this order. Decided now, in advance, so we do not
 argue about it at 2am on the 12th:
 
-1. Admin rejection reasons on-chain — approve-only is enough to demo the gate.
-2. `/intel/cohort` — the survivorship-correct curve is the most work for the
-   least demo value. `/intel/issuer` alone tells the story.
-3. `/agent` console — the JSON decision log in a terminal demos the same thing.
-4. `markDefaulted` — delinquency is enough to show the agent's judgement.
+1. Document upload → a seeded fixture. The review UI reads two pre-loaded
+   drafts from the database and R2 is never wired. The admin still reviews and
+   approves on-chain, which is the part being demonstrated; only the upload path
+   is stubbed. Cheapest large cut available and it costs the demo nothing.
+2. Admin rejection reasons on-chain — approve-only is enough to demo the gate.
+3. `/intel/cohort` — the survivorship-correct curve is the most work for the
+   least demo value. `/intel/borrower` alone tells the story.
+4. `/agent` console — the JSON decision log in a terminal demos the same thing.
+5. `markDefaulted` — delinquency is enough to show the agent's judgement.
    Default is the least likely path to hit live anyway.
-5. Refund path (`Cancelled` notes) — only reachable via a failed funding round we
-   would not demo.
+6. `Offering.relist` — listing at one price and delisting is enough. Repricing
+   is a convenience, not a mechanism.
 
 **Never cut:** the agent settling a period unattended, and a paid intel query
 returning real data. Those two are the submission. Everything else is support.

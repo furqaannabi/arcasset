@@ -23,7 +23,7 @@ Conventional Commits for the subject line: `feat:`, `fix:`, `chore:`, `docs:`,
 
 ```
 contracts/   Foundry — IssuerRegistry, NoteFactory, RWANote, RepaymentVault, ServicingRelay
-backend/     Bun + Hono — servicing agent, /intel/* paid API
+backend/     Bun + Hono · Prisma/Postgres · R2 — agent, /intel/* API, documents
 subgraph/    The Graph — notes, periods, repayments, delinquency, servicing actions
 web/         Next.js — issue, note detail, agent console, intelligence storefront
 docs/        Specs — read these before changing an interface
@@ -42,6 +42,10 @@ docs/        Specs — read these before changing an interface
 - Backend and web: TypeScript strict. No `any` in committed code.
 - The subgraph is the only read path for the agent and the UI. Do not add
   direct-RPC reads to `backend/` or `web/` for data the subgraph already indexes.
+- **Postgres holds documents, sessions and pre-chain drafts. Never note state.**
+  If a value can be derived from the chain, the database does not store it. A
+  `notes` table would make one query easier and give us a second source of truth
+  that drifts — see `docs/09-backend.md`.
 - Secrets live in `.env` (gitignored). Nothing keyed or seeded goes in a commit.
 
 ## Before changing an interface
