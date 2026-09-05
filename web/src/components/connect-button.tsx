@@ -23,7 +23,7 @@ export function ConnectButton() {
     );
   }
 
-  // Wrong network blocks, it does not fail silently — docs/06-web.md.
+  // Wrong network blocks, it does not fail silently — docs/05-web.md.
   if (chainId !== CHAIN.id) {
     return (
       <button

@@ -29,7 +29,7 @@ export async function query<T>(
   });
 
   if (!res.ok) {
-    // Surface the real failure — docs/06-web.md forbids "something went wrong".
+    // Surface the real failure — docs/05-web.md forbids "something went wrong".
     throw new SubgraphError(`subgraph HTTP ${res.status} ${res.statusText}`);
   }
 

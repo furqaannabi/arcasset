@@ -38,7 +38,7 @@ Shared pieces already in place, to build the screens on rather than around:
 ### `/propose` — Propose a note
 
 Gated on `PartyRegistry.isVerified`. Unverified issuers see the Selfie Check
-step instead of the form — see [07 — Identity](07-identity.md).
+step instead of the form — see [06 — Identity](06-identity.md).
 
 Form fields map 1:1 onto `Terms`, including the **borrower address** — the note
 is minted against a counterparty, not against the person filling in the form.
@@ -55,7 +55,7 @@ Three things the UI must do that the contract deliberately does not:
   `periodLength`.
 
 Also required: the **agreement documents**, plural. The originator uploads every
-document behind the loan — see [05 — Backend](05-backend.md#lifecycle).
+document behind the loan — see [04 — Backend](04-backend.md#lifecycle).
 Uploading is not optional and not deferrable: without the files the admin has
 nothing to review, and the approval step is the reason they exist.
 
@@ -192,7 +192,7 @@ on stage. Showing the lag reads as rigour.
   relative alone.
 - Addresses: `0x1234…abcd`, click to copy, link to explorer.
 - Rates from the intel API arrive as `[0,1]` floats; multiply by 100 at render.
-  The API never sends percentages — see [05](05-backend.md#response-conventions).
+  The API never sends percentages — see [04](04-backend.md#response-conventions).
 
 ## Wallet and network
 

@@ -1,20 +1,24 @@
-# 05 — Backend
+# 04 — Backend
 
 **Status: Spec**
 
 Bun + Hono, Prisma over Postgres, Cloudflare R2 for files. One process, three
 concerns that do not share state beyond the database connection:
 
-| Router / worker | Covered in |
+| Concern | |
 |---|---|
+| the servicing loop — no router, a background tick | [below](#the-servicing-agent) |
 | `/documents/*` — upload, manifest, review access | [below](#documents) |
 | `/intel/*` — the paid API | [below](#the-intel-api) |
-| the servicing loop — no router, a background tick | [04 — Agent](04-agent.md) |
 
-The agent has its own document because it is a different kind of thing: a loop
-with a hot key that decides and acts, rather than a surface that answers. The
-two HTTP routers live here together because they share the database, the
-session model and the deployment.
+Everything off-chain that is not the subgraph or the web app lives here, in one
+deployable, sharing one database and one session model. The subgraph stays
+separate because it is a different deployable in a different language, published
+to Subgraph Studio rather than run by us — see [03](03-subgraph.md).
+
+The agent is the odd one out in kind: a loop with a hot key that decides and
+acts, where the other two are surfaces that answer. It is documented alongside
+them because it ships in the same process, not because it works the same way.
 
 ## What the database is allowed to hold
 
@@ -140,6 +144,115 @@ deleted on redemption. Sessions last 24 hours.
 Session tokens are bearer credentials over TLS. That is adequate for a
 hackathon and would not be for real loan documents; the honest upgrade is short
 tokens plus a refresh, and it is out of scope.
+
+## The servicing agent
+
+Bun + Hono, sharing this process with the routers below. Reads the subgraph,
+writes through `ServicingRelay`. Keeps no authoritative state of its own.
+
+It does not use the database. Not for what it has done, not for what it intends
+to do. Every decision is re-derived from the subgraph on every tick, which is
+what makes a restarted agent identical to one that never stopped.
+
+### Decision loop
+
+Runs every `TICK_INTERVAL` (default 60s):
+
+```
+1. Query DueNotes (see 03) — notes with agent == me, periods ended, unsettled.
+2. For each note, for each due period, in index order:
+      classify → decide → act → record
+3. Sleep.
+```
+
+Classification is a pure function. It takes period state and clock, returns an
+action. It is unit-tested with no chain and no network — that is the point of
+keeping it pure.
+
+```
+decide(period, note, now) →
+
+  paid >= due                                  → SETTLE
+  paid <  due  and  now <= end + grace         → WAIT      (still in grace)
+  paid <  due  and  now >  end + grace
+       and status != Missed                    → DELINQUENT
+  status == Missed
+       and now > missedAt + cureWindow         → DEFAULT
+  otherwise                                    → WAIT
+```
+
+Partial payment inside grace is `WAIT`, not `DELINQUENT`. An issuer who has paid
+80% with two days of grace left has not missed anything yet.
+
+### Safety rails
+
+The agent is autonomous over a hot key. These are non-negotiable:
+
+1. **Bounded per tick.** At most `MAX_ACTIONS_PER_TICK` (default 25) transactions
+   per tick. A subgraph bug that marks 10,000 notes delinquent cannot produce
+   10,000 transactions before a human sees it.
+2. **Idempotent by contract, not by memory.** The agent may re-attempt any action;
+   `settlePeriod` on a settled period reverts. It never tracks "already did this"
+   in local state, because local state is lost on restart.
+3. **Confirm by receipt, never by subgraph.** After sending, the agent waits for
+   the receipt. It does not poll the subgraph to learn whether its own
+   transaction landed — the indexer lags and the agent would double-send.
+4. **One in-flight transaction per note.** A per-note mutex, held from send to
+   receipt. Different notes proceed in parallel.
+5. **Nonce discipline.** A single signer with a serialized send queue. No
+   parallel signing off one key.
+6. **Default is the only irreversible action, so it is rate-limited hard.** At
+   most one `markDefaulted` per note per tick, and `DEFAULT_DRY_RUN=true` in the
+   demo config — it logs the decision and requires a human to flip the flag.
+   Marking a real borrower defaulted by accident is the worst thing this system
+   can do; make it the slowest path.
+7. **Staleness guard.** Before acting, compare the subgraph's `_meta.block.number`
+   to the RPC head. If the indexer is more than `MAX_LAG_BLOCKS` (default 200)
+   behind, skip the tick and log. Acting on stale data causes wrong delinquency
+   marks.
+8. **Balance floor.** If the signer's gas balance drops below
+   `MIN_GAS_BALANCE`, stop acting and alert rather than half-servicing a note.
+
+### Failure handling
+
+| Failure | Response |
+|---|---|
+| Subgraph unreachable | Skip tick, exponential backoff, alert after 5 consecutive |
+| Subgraph lagging | Skip tick (rail 7) |
+| Transaction reverts with a known error | Log at info — `AlreadySettled` is expected under lag, not an error |
+| Transaction reverts unknown | Log at error, mark note `quarantined`, skip it until restart |
+| RPC timeout after send | Do not resend. Wait for receipt by hash. Resending is how you double-pay |
+| Delegation revoked mid-flight | Expected. Drop the note on next tick |
+
+Quarantine is in-memory and deliberately clears on restart — it is a
+circuit-breaker, not a decision.
+
+### Observability
+
+`GET /health` — signer address, gas balance, subgraph head vs RPC head, lag in
+blocks, last tick timestamp, actions taken in the last hour, quarantined notes.
+
+Structured JSON logs, one line per decision:
+
+```json
+{"tick":1417,"note":"0xabc…","period":3,"decision":"SETTLE",
+ "due":"1000000","paid":"1000000","lateness":0,"tx":"0xdef…"}
+```
+
+Every `WAIT` is logged too. In the demo, the log *is* the agent — being able to
+show the decision trace is worth more than a dashboard.
+
+### What the agent does not do
+
+- Underwrite. It does not decide who gets funded.
+- Price. No rate setting, no discounting.
+- Chase off-chain. No emails, no dunning.
+- Hold funds. It never custodies USDC; the vault does. Its balance is gas only —
+  and since gas is USDC on Arc, keep the gas float small and visible so it is
+  never mistaken for servicing funds.
+
+It is a clock with a keypair and an opinion about lateness. That narrowness is
+what makes it safe to run unattended.
 
 ## Documents
 
@@ -421,7 +534,13 @@ system.
 | `ADMIN_ADDRESSES` | Comma-separated; who may approve |
 | `INTEL_PAY_TO` | Address quoted to buyers and checked on the receipt |
 | `INTEL_PRICES` | Endpoint price list, base units. Served by `/intel/pricing` |
-| `AGENT_PRIVATE_KEY`, `SUBGRAPH_URL`, `RPC_URL` | See [04 — Agent](04-agent.md) |
+| `SUBGRAPH_URL`, `RPC_URL` | The only read path, and the chain |
+| `AGENT_PRIVATE_KEY` | Signer for the servicing loop. `.env` only, never committed |
+| `TICK_INTERVAL_MS` | Default 60000. The demo runs at 5000 to make the loop visible |
+| `MAX_ACTIONS_PER_TICK` | Default 25 |
+| `MAX_LAG_BLOCKS` | Default 200 |
+| `MIN_GAS_BALANCE` | Default 0.01, native units |
+| `DEFAULT_DRY_RUN` | Default true. Flip only with a human present |
 
 `bun run db:migrate` and `bun run db:seed`. The seed loads two drafts with
 sample documents so the review flow works with no R2 credentials and no spend.
@@ -431,6 +550,11 @@ balance is a gas float that should stay small and boring; mixing revenue into it
 makes the low-balance alarm meaningless.
 
 ## Failure modes
+
+These are the HTTP surfaces. The servicing loop fails differently — it has
+nobody to return a status code to, and its response to almost everything is to
+skip the tick and try again — so its table lives with it, under
+[Failure handling](#failure-handling).
 
 | Failure | Response |
 |---|---|

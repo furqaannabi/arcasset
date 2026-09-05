@@ -2,7 +2,7 @@ import type { Chain } from "viem";
 import { arc, arcTestnet } from "viem/chains";
 
 /**
- * One supported chain at a time — see docs/06-web.md ("Wallet and network").
+ * One supported chain at a time — see docs/05-web.md ("Wallet and network").
  * Selected by env so local/demo builds differ only in configuration.
  */
 export const CHAIN: Chain =

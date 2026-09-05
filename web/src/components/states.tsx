@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /**
- * Every data-driven view handles four states explicitly — docs/06-web.md.
+ * Every data-driven view handles four states explicitly — docs/05-web.md.
  * No spinner-only screens; no "something went wrong".
  */
 

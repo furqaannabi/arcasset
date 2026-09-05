@@ -20,7 +20,7 @@ export default async function NotePage({
       </header>
       <EmptyState
         title="Not built yet"
-        hint="The period schedule table is the product — see docs/06-web.md. Due Sep 9."
+        hint="The period schedule table is the product — see docs/05-web.md. Due Sep 9."
       />
     </div>
   );

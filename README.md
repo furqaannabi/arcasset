@@ -161,8 +161,9 @@ No layer is trusted alone.
 
 ```text
 contracts/   Foundry — PartyRegistry, IssuanceQueue, NoteFactory, RWANote, Offering, RepaymentVault, ServicingRelay
-backend/     Bun + Hono · Prisma over Postgres · Cloudflare R2 — one process:
-             the servicing agent, the paid /intel/* API, and document upload
+backend/     Bun + Hono · Prisma over Postgres · Cloudflare R2 — everything
+             off-chain but the subgraph and the web app, in one process:
+             the servicing agent, document upload, and the paid /intel/* API
 subgraph/    The Graph — notes, periods, repayments, delinquency, servicing actions
 web/         Next.js — propose, proposal review, note detail, agent console, intelligence storefront
 docs/        The specs. Read the relevant one before changing an interface

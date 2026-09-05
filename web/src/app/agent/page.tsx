@@ -14,7 +14,7 @@ export default function AgentPage() {
       </header>
       <EmptyState
         title="Not built yet"
-        hint="Polls the agent's /health and decision log — see docs/04-agent.md. Due Sep 12, and first on the cut list after /intel/cohort."
+        hint="Polls the agent's /health and decision log — see docs/04-backend.md. Due Sep 12, and first on the cut list after /intel/cohort."
       />
     </div>
   );

@@ -80,7 +80,7 @@ metadata, wallet sessions, and the draft a proposal existed as before it reached
 the chain — things with no on-chain representation that cannot have one. It
 holds no note, period, repayment or position state, and adding a `notes` table
 for a convenient query would be a second source of truth that drifts the first
-time an event is missed. See [05 — Backend](05-backend.md#what-the-database-is-allowed-to-hold).
+time an event is missed. See [04 — Backend](04-backend.md#what-the-database-is-allowed-to-hold).
 
 The one deliberate exception: the intel API caches subgraph responses in memory
 (TTL 30s) so a burst of paid queries doesn't hammer the indexer. Cache is

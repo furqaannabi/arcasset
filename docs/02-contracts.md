@@ -41,7 +41,7 @@ never does.
 
 Two parties must be real people before a note means anything: the originator who
 mints it and the borrower who owes on it. Both are verified the same way — see
-[07 — Identity](07-identity.md).
+[06 — Identity](06-identity.md).
 
 ```solidity
 function verify(address party, bytes calldata proof) external;
@@ -162,7 +162,7 @@ admin can read the contents.
 - `documentHash != 0` — else `NoDocument()`. It is a manifest hash over *all*
   the agreement documents, not one file: `keccak256` of every document's content
   hash, sorted ascending and concatenated. Construction and the reasoning behind
-  it are in [05 — Backend](05-backend.md#the-manifest-hash); the contract only
+  it are in [04 — Backend](04-backend.md#the-manifest-hash); the contract only
   ever sees the root.
 - `acceptDeadline > block.timestamp`.
 - `periodCount >= 1`, `periodLength >= 1 minutes`, `principal > 0`,

@@ -1,7 +1,7 @@
 import { SETTLEMENT_DECIMALS } from "./chain";
 
 /**
- * Formatting rules live here and only here — see docs/06-web.md
+ * Formatting rules live here and only here — see docs/05-web.md
  * ("Formatting rules"). Money stays `bigint` until the render call.
  */
 
@@ -77,7 +77,7 @@ export function annualisedRate(couponBps: number, periodLengthSeconds: number): 
   return (couponBps / 10_000) * periodsPerYear;
 }
 
-/** Intel API sends rates as [0,1] floats — docs/05-backend.md. */
+/** Intel API sends rates as [0,1] floats — docs/04-backend.md. */
 export function formatRate(rate: number, places = 2): string {
   return `${(rate * 100).toFixed(places)}%`;
 }
@@ -88,7 +88,7 @@ export function shortAddress(address: string): string {
 }
 
 /**
- * Absolute time, always. Relative alone lies across timezones — docs/06-web.md.
+ * Absolute time, always. Relative alone lies across timezones — docs/05-web.md.
  */
 export function formatTimestamp(seconds: bigint | number): string {
   const ms = Number(seconds) * 1000;

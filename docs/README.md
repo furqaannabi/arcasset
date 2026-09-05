@@ -13,11 +13,10 @@ the same commit, don't leave them diverged.
 | 01 | [Architecture](01-architecture.md) | Components, data flow, trust boundaries |
 | 02 | [Contracts](02-contracts.md) | Interfaces, state, events, invariants |
 | 03 | [Subgraph](03-subgraph.md) | Entities, derived fields, handlers |
-| 04 | [Servicing agent](04-agent.md) | Decision loop, actions, safety rails |
-| 05 | [Backend](05-backend.md) | Documents, Postgres, R2, auth, the paid `/intel/*` API |
-| 06 | [Web](06-web.md) | Screens, states, empty and error cases |
-| 07 | [Identity](07-identity.md) | World Selfie Check, eligibility, abuse model |
-| 08 | [Milestones](08-milestones.md) | Day-by-day plan, demo script, cut lines |
+| 04 | [Backend](04-backend.md) | Servicing agent, documents, Postgres, R2, auth, paid `/intel/*` |
+| 05 | [Web](05-web.md) | Screens, states, empty and error cases |
+| 06 | [Identity](06-identity.md) | World Selfie Check, eligibility, abuse model |
+| 07 | [Milestones](07-milestones.md) | Day-by-day plan, demo script, cut lines |
 
 ## Status legend
 
