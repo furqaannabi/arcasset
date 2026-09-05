@@ -100,7 +100,7 @@ show the decision trace is worth more than a dashboard.
 | `TICK_INTERVAL_MS` | 60000 | Demo runs at 5000 to make the loop visible |
 | `MAX_ACTIONS_PER_TICK` | 25 | |
 | `MAX_LAG_BLOCKS` | 200 | |
-| `MIN_GAS_BALANCE` | 0.01 | Native units |
+| `MIN_GAS_BALANCE` | 0.01 | Native USDC — same asset it settles in |
 | `DEFAULT_DRY_RUN` | true | Flip only with a human present |
 | `AGENT_PRIVATE_KEY` | — | `.env` only, never committed |
 | `SUBGRAPH_URL` | — | Studio endpoint |
@@ -111,7 +111,9 @@ show the decision trace is worth more than a dashboard.
 - Underwrite. It does not decide who gets funded.
 - Price. No rate setting, no discounting.
 - Chase off-chain. No emails, no dunning.
-- Hold funds. It never custodies USDC; the vault does.
+- Hold funds. It never custodies USDC; the vault does. Its balance is gas only —
+  and since gas is USDC on Arc, keep the gas float small and visible so it is
+  never mistaken for servicing funds.
 
 It is a clock with a keypair and an opinion about lateness. That narrowness is
 what makes it safe to run unattended.

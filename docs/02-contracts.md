@@ -2,7 +2,9 @@
 
 **Status: Spec**
 
-Solidity 0.8.24, Foundry. All amounts are USDC base units (6 decimals). All
+Solidity 0.8.24, Foundry. Notes settle in **native Arc USDC (18 decimals)**, so
+value moves as `msg.value` and there is no ERC-20 approve step anywhere. Gas and
+settlement are the same asset. All amounts are base units (wei-equivalent). All
 timestamps are Unix seconds as `uint64`. Periods are half-open `[start, end)`.
 
 ## Shared types
@@ -20,7 +22,7 @@ enum NoteStatus {
 enum PeriodStatus { Pending, Settled, Missed, Cured }
 
 struct Terms {
-    uint256 principal;       // target raise, USDC base units
+    uint256 principal;       // target raise, native USDC base units (18dp)
     uint256 minPrincipal;    // below this at funding deadline => Cancelled
     uint16  couponBps;       // per-period coupon, basis points of principal
     uint16  servicingFeeBps; // basis points of each repayment, to feeRecipient
@@ -99,9 +101,9 @@ ERC-20 where one token is one unit of principal contributed. Balance is a
 lender's pro-rata share; transfers move future claims with it.
 
 ```solidity
-function fund(uint256 amount) external;         // Funding only, pulls USDC
+function fund() external payable;               // Funding only, amount is msg.value
 function refund() external;                     // Cancelled only
-function claim() external returns (uint256);    // claimable coupons + principal
+function claim() external returns (uint256);    // sends native USDC to msg.sender
 function claimable(address lender) external view returns (uint256);
 
 function status() external view returns (NoteStatus);
@@ -133,12 +135,34 @@ event StatusChanged(NoteStatus indexed from, NoteStatus indexed to, uint64 times
 in the vault and is swept into the final period's distribution. Rounding never
 lets the sum of claims exceed the balance.
 
+**Native value handling.** Settling in the native asset rather than an ERC-20
+buys us simplicity — no approvals, no allowance race, no fee-on-transfer or
+rebasing token to defend against — and costs us one thing: every payout hands
+control to the recipient.
+
+- `claim`, `refund`, and every distribution send value with `call{value: …}("")`
+  and check the return. Never `transfer`/`send` — the 2300-gas stipend breaks
+  smart-contract lenders, and a note whose lender is a multisig must still work.
+- **Checks-effects-interactions is load-bearing now, not stylistic.** Zero the
+  lender's claimable and update the accumulator *before* the call. A lender
+  contract that re-enters `claim` must find nothing left to claim.
+- `nonReentrant` on `claim`, `refund`, and the relay's settlement entry point, as
+  a second line of defence behind correct ordering — not instead of it.
+- A recipient that reverts on receive must not be able to block anyone else. A
+  failed payout reverts only that lender's own claim; it never bricks the note or
+  a distribution to others.
+- The vault's own accounting is authoritative, never `address(this).balance`.
+  Value can be force-sent via `selfdestruct`, so a balance check as an invariant
+  would be griefable.
+- Overpayment on `repay` is credited to the next unsettled period, so the vault
+  never needs to push value back to a payer mid-call.
+
 ## RepaymentVault
 
 Holds USDC between repayment and claim. One vault, notes segregated by `noteId`.
 
 ```solidity
-function repay(uint256 noteId, uint16 periodIndex, uint256 amount) external;
+function repay(uint256 noteId, uint16 periodIndex) external payable;
 function balanceOf(uint256 noteId) external view returns (uint256);
 
 event Repaid(
@@ -218,3 +242,9 @@ Each is a named test, not a vibe:
 - **Unit:** nullifier re-use across two addresses reverts.
 - **Unit:** compromised-agent scenario — agent calls every relay entry point in
   every order and cannot move USDC to an address it controls.
+- **Unit:** a lender contract that re-enters `claim` from its `receive` gets
+  nothing on the second entry, and the note's accounting is unchanged.
+- **Unit:** a lender contract that reverts on `receive` cannot block another
+  lender's claim or a period settlement.
+- **Unit:** value force-sent to the vault via `selfdestruct` does not change any
+  lender's `claimable`.

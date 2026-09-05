@@ -31,8 +31,11 @@ docs/        Specs — read these before changing an interface
 
 ## Conventions
 
-- **Money is `uint256` base units of USDC (6 decimals).** Never floats, never
-  ether-denominated helpers. Format only at the UI edge.
+- **Money is `uint256` base units of native Arc USDC (18 decimals).** Settlement
+  is the chain's native asset, so value moves as `msg.value` and there is no
+  ERC-20 approve step. Never floats. Format only at the UI edge, via
+  `formatUsdc`. One USDC exceeds 2^53 at this precision — a `Number` anywhere in
+  a money path is a bug.
 - **Time is Unix seconds (`uint64`).** Periods are half-open `[start, end)`.
 - Contracts: Solidity 0.8.24, `forge fmt` before commit, custom errors over
   revert strings, checks-effects-interactions.

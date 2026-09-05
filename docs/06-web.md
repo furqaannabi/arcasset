@@ -26,6 +26,9 @@ deliberately does not:
 Submit → `NoteFactory.issue` → redirect to the note page using the CREATE2
 address, before the receipt lands.
 
+Funding and repayment are native value transfers, so there is **no approval
+step** — one transaction, not two. Do not build an allowance UI.
+
 ### `/note/[address]` — Note detail
 
 The main screen. Sections:
@@ -77,8 +80,12 @@ on stage. Showing the lag reads as rigour.
 
 ## Formatting rules
 
-- USDC formatted at the edge only: `formatUnits(v, 6)`, two decimals, thousands
-  separators. `bigint` all the way to the render call — no `Number()` on money.
+- USDC formatted at the edge only, at **18 decimals** (native Arc USDC), two
+  displayed decimals, thousands separators. `bigint` all the way to the render
+  call — no `Number()` on money. At 18 decimals a single USDC does not fit in a
+  float, so this is a correctness rule, not a style one. Use
+  `formatUsdc` from `src/lib/format.ts`; it does integer math and truncates
+  rather than rounding, so a balance never displays as more than is owed.
 - Timestamps: absolute local time plus relative ("Sep 12, 14:00 · in 2h"). Never
   relative alone.
 - Addresses: `0x1234…abcd`, click to copy, link to explorer.

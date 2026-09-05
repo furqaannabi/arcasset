@@ -17,9 +17,10 @@ Stripe page.
 ```
 1. Buyer GETs the endpoint with no payment header.
 2. API responds 402 with a quote:
-     { "price": "500000", "asset": "USDC", "chainId": …,
+     { "price": "500000000000000000", "asset": "native USDC", "chainId": …,
        "payTo": "0x…", "quoteId": "q_…", "expiresAt": … }
-3. Buyer sends USDC to payTo with quoteId in calldata, gets a tx hash.
+3. Buyer sends native USDC to payTo with quoteId in calldata (a plain value
+   transfer — no token approval), gets a tx hash.
 4. Buyer re-GETs with header:  X-Payment: <txHash>
 5. API verifies on-chain: confirmed, correct recipient, amount >= price,
    quoteId matches, hash not already spent. Then serves the response.
@@ -28,7 +29,10 @@ Stripe page.
 **Verification rules** — each one is a test:
 
 - Receipt must be confirmed. Pending is a 402, not a 200.
-- `to` must equal our payment address, `value`/transfer amount ≥ quoted price.
+- `to` must equal our payment address and `value` ≥ the quoted price. Because
+  settlement is native, this is one field on the receipt — no ERC-20 transfer
+  log to parse, and no risk of reading a spoofed `Transfer` event from an
+  unrelated token contract.
 - A tx hash is single-use. A replayed hash returns `409 payment_replayed`.
   Spent hashes live in a persisted set; losing it would let buyers replay.
 - Quote expiry is 10 minutes. Late payment → `410 quote_expired`, funds are
@@ -50,8 +54,8 @@ Repayment behaviour for one issuer. **$0.50**
   "notesIssued": 7,
   "notesMatured": 4,
   "notesDefaulted": 0,
-  "principalRaised": "450000000000",
-  "principalRepaid": "310000000000",
+  "principalRaised": "450000000000000000000000",
+  "principalRepaid": "310000000000000000000000",
   "periods": { "settled": 41, "missed": 3, "cured": 3 },
   "punctuality": {
     "onTimeRate": 0.9318,
@@ -77,7 +81,7 @@ Delinquency curve for a cohort of notes. **$2.00**
 
 ```json
 {
-  "cohort": { "noteCount": 63, "principal": "2100000000000",
+  "cohort": { "noteCount": 63, "principal": "2100000000000000000000000",
               "issuedAfter": 1756944000, "issuedBefore": 1759536000 },
   "curve": [
     { "periodIndex": 1, "notesReaching": 63, "missedRate": 0.016, "cureRate": 1.0 },
@@ -111,8 +115,9 @@ committing.
 
 ## Response conventions
 
-- All amounts are strings of USDC base units. Never JSON numbers — 2^53 is not
-  far enough away and float money is how you lose a decimal.
+- All amounts are strings of native USDC base units (18 decimals). Never JSON
+  numbers — at 18 decimals even one whole USDC exceeds 2^53, so a JSON number
+  would be silently wrong, not merely imprecise.
 - Rates are floats in `[0, 1]`, four decimals. Not percentages, not bps.
 - Every response carries `asOfBlock` from the subgraph's `_meta`. The buyer must
   be able to tell how fresh the data is and reproduce the query.
