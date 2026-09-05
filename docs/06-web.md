@@ -1,0 +1,104 @@
+# 06 — Web
+
+**Status: Spec**
+
+Next.js App Router, wagmi + viem, TanStack Query against the subgraph. Four
+screens. No design system beyond Tailwind; the demo is judged on the loop being
+legible, not on polish.
+
+## Screens
+
+### `/issue` — Issue a note
+
+Gated on `IssuerRegistry.isVerified`. Unverified issuers see the Selfie Check
+step instead of the form — see [07 — Identity](07-identity.md).
+
+Form fields map 1:1 onto `Terms`. Two things the UI must do that the contract
+deliberately does not:
+
+- **Annualise the coupon for display.** `couponBps` is per period; show
+  "1.00% per 30d period · ~12.7% APR" beside the input. Someone will type 1200
+  meaning 12% APR and issue a note paying 12% a month if we don't.
+- **Preview the schedule.** A table of all `periodCount` periods with dates and
+  amounts, rendered before signing. It is the last chance to catch a wrong
+  `periodLength`.
+
+Submit → `NoteFactory.issue` → redirect to the note page using the CREATE2
+address, before the receipt lands.
+
+### `/note/[address]` — Note detail
+
+The main screen. Sections:
+
+1. **Header** — status pill, principal, coupon, issuer with score badge
+   (links to intel).
+2. **Funding** (status `Funding`) — progress toward `minPrincipal` and
+   `principal`, deadline countdown, fund input. Show the countdown in absolute
+   time too; relative-only timers lie across timezones.
+3. **Schedule** — every period as a row: dates, due, paid, status, lateness.
+   The current period is highlighted. This table is the product.
+4. **Your position** (connected lender) — funded, claimed, claimable, claim
+   button.
+5. **Servicing log** — reverse-chronological `ServicingAction` list with tx
+   links. Shows the agent doing its job.
+
+### `/agent` — Agent console
+
+Read-only view of the running agent: `/health` output, live decision log
+(polled, newest first), notes under service with next action and countdown.
+
+This screen exists to prove autonomy. During the demo it is the one that should
+be on screen when a period rolls over — the judge should watch the agent decide
+without anyone touching it.
+
+### `/intel` — Intelligence storefront
+
+Endpoint cards with price and a sample response. Live query builder: pick an
+endpoint, fill params, hit it, get the 402, pay in one click via wagmi, see the
+real response rendered.
+
+Show the payment tx hash and the `asOfBlock` in the result. The point is that a
+stranger paid for data and got a verifiable answer.
+
+## State handling
+
+Every data-driven view handles four states explicitly. No spinner-only screens.
+
+| State | Requirement |
+|---|---|
+| Loading | Skeleton matching the final layout, not a centred spinner |
+| Empty | Says what would fill it and how — "no notes yet · issue one" |
+| Error | The actual failure and a retry. Never "something went wrong" |
+| Stale | If subgraph `_meta` lags RPC head by >200 blocks, a banner: "indexer N blocks behind" |
+
+That last row matters more than it looks. During the demo the indexer *will* lag
+right after a transaction, and a UI that silently shows old data reads as a bug
+on stage. Showing the lag reads as rigour.
+
+## Formatting rules
+
+- USDC formatted at the edge only: `formatUnits(v, 6)`, two decimals, thousands
+  separators. `bigint` all the way to the render call — no `Number()` on money.
+- Timestamps: absolute local time plus relative ("Sep 12, 14:00 · in 2h"). Never
+  relative alone.
+- Addresses: `0x1234…abcd`, click to copy, link to explorer.
+- Rates from the intel API arrive as `[0,1]` floats; multiply by 100 at render.
+  The API never sends percentages — see [05](05-intel-api.md#response-conventions).
+
+## Wallet and network
+
+- One supported chain. Wrong network → a blocking switch prompt, not a silent
+  failure.
+- Every write shows: pending → confirmed → indexed. "Indexed" is a distinct third
+  state, reached when the subgraph reflects the change. Conflating confirmed with
+  indexed is why the UI would appear to lose a transaction.
+- Read-only browsing works with no wallet connected. Connect is required only to
+  write.
+
+## Non-goals
+
+- No mobile layout beyond "does not break".
+- No dark mode.
+- No i18n.
+- No secondary-market UI — notes are transferable, but we do not build a
+  trading screen. See [00 — Scope](00-overview.md#scope).
