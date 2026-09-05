@@ -1,6 +1,8 @@
+import { ZERO_HASH } from "./manifest";
+
 /**
  * The Terms struct from docs/02-contracts.md, plus the exact checks
- * NoteFactory.issue performs. Validating here is a courtesy to the user, not a
+ * IssuanceQueue.propose performs. Validating here is a courtesy to the user, not a
  * security boundary — the contract re-checks everything. But if these drift
  * from the contract, the UI will happily let someone sign a transaction that
  * reverts, so they are kept in one place and tested.
@@ -17,9 +19,6 @@ export type Terms = {
   cureWindow: number;
   acceptDeadline: number; // unix seconds; borrower must accept before this
 };
-
-export const ZERO_HASH =
-  "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 export const LIMITS = {
   MIN_PERIOD_LENGTH: 60, // one minute — see docs/02-contracts.md

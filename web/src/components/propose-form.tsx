@@ -2,13 +2,20 @@
 
 import { useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import { keccak256 } from "viem";
+
 import { buildSchedule } from "@/lib/schedule";
+import {
+  hashFile,
+  manifestHash,
+  dedupe,
+  rejectReason,
+  MAX_FILES,
+  type DocumentEntry,
+} from "@/lib/manifest";
 import {
   validateProposal,
   validateTerms,
   errorFor,
-  ZERO_HASH,
   type Terms,
 } from "@/lib/terms";
 import {
@@ -80,8 +87,9 @@ function toTerms(d: Draft, now: number): { terms: Terms | null; parseError?: str
 
 export function ProposeForm() {
   const { address, isConnected } = useAccount();
-  const [documentHash, setDocumentHash] = useState<string>(ZERO_HASH);
-  const [documentName, setDocumentName] = useState<string>("");
+  const [docs, setDocs] = useState<DocumentEntry[]>([]);
+  const [docError, setDocError] = useState<string | null>(null);
+  const documentHash = useMemo(() => manifestHash(docs), [docs]);
   const [draft, setDraft] = useState<Draft>(INITIAL);
 
   // Pinned once per mount: a clock that ticks would make the preview jitter
@@ -129,30 +137,81 @@ export function ProposeForm() {
         </Field>
 
         <Field
-          label="Signed agreement"
+          label="Agreement documents"
           hint={
-            documentName
-              ? `${documentName} · ${documentHash.slice(0, 10)}…${documentHash.slice(-6)}`
-              : "Hashed in your browser. The file is never uploaded here — only its hash reaches the chain."
+            docs.length
+              ? `${docs.length} file${docs.length === 1 ? "" : "s"} · manifest ${documentHash.slice(0, 10)}…${documentHash.slice(-6)}`
+              : "Every document behind the loan. The admin reads these before approving — without them there is nothing to review."
           }
-          error={errorFor(errors, "documentHash")}
+          error={errorFor(errors, "documentHash") ?? docError ?? undefined}
         >
           <input
             type="file"
+            multiple
+            accept="application/pdf,image/png,image/jpeg"
             className={`${inputCls} file:mr-3 file:rounded file:border-0 file:bg-black/5 file:px-2 file:py-1 file:text-xs dark:file:bg-white/10`}
             onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) {
-                setDocumentHash(ZERO_HASH);
-                setDocumentName("");
-                return;
-              }
-              const bytes = new Uint8Array(await file.arrayBuffer());
-              setDocumentHash(keccak256(bytes));
-              setDocumentName(file.name);
+              const picked = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              if (!picked.length) return;
+
+              const rejected = picked
+                .map((f) => {
+                  const why = rejectReason(f);
+                  return why ? `${f.name}: ${why}` : null;
+                })
+                .filter(Boolean);
+              setDocError(rejected.length ? rejected.join(" ") : null);
+
+              const accepted = picked.filter((f) => !rejectReason(f));
+              const hashed = await Promise.all(
+                accepted.map(async (f) => ({
+                  filename: f.name,
+                  contentType: f.type,
+                  byteSize: f.size,
+                  contentHash: await hashFile(f),
+                })),
+              );
+              setDocs((prev) => {
+                const merged = dedupe([...prev, ...hashed]);
+                if (merged.length > MAX_FILES) {
+                  setDocError(`At most ${MAX_FILES} documents.`);
+                  return merged.slice(0, MAX_FILES);
+                }
+                return merged;
+              });
             }}
           />
         </Field>
+
+        {docs.length > 0 ? (
+          <ul className="space-y-1 text-xs">
+            {docs.map((d) => (
+              <li
+                key={d.contentHash}
+                className="flex items-center gap-2 rounded border border-black/10 px-2 py-1 dark:border-white/15"
+              >
+                <span className="truncate">{d.filename}</span>
+                <span className="ml-auto shrink-0 opacity-50">
+                  {(d.byteSize / 1024).toFixed(0)} KB
+                </span>
+                <code className="shrink-0 opacity-50">
+                  {d.contentHash.slice(0, 8)}…
+                </code>
+                <button
+                  type="button"
+                  aria-label={`Remove ${d.filename}`}
+                  className="shrink-0 opacity-50 hover:opacity-100"
+                  onClick={() =>
+                    setDocs((prev) => prev.filter((x) => x.contentHash !== d.contentHash))
+                  }
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
 
         <Field
           label="Principal"
@@ -268,14 +327,15 @@ export function ProposeForm() {
           title="PartyRegistry and IssuanceQueue are not deployed yet"
           className="w-full rounded border border-current px-4 py-2 text-sm font-medium opacity-40"
         >
-          {blocked ? "Fix the errors above" : "Propose note"}
+          {blocked ? "Fix the errors above" : "Seal and propose"}
         </button>
         <p className="text-xs opacity-60">
           Proposing is disabled until <code>PartyRegistry</code> and{" "}
-          <code>IssuanceQueue</code> are deployed. The preview is live — it uses
-          the same schedule maths the contract will. Nothing mints here: a
-          proposal still needs the borrower to accept and an admin to approve
-          the agreement.
+          <code>IssuanceQueue</code> are deployed, and uploads until the document
+          service exists. Hashing is live and runs in your browser, so the
+          manifest hash shown here is the one that will go on-chain. Sealing will
+          upload these files so the admin can read them — a proposal still needs
+          the borrower to accept and an admin to approve before anything mints.
         </p>
       </form>
 
