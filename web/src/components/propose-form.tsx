@@ -4,7 +4,13 @@ import { useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { keccak256 } from "viem";
 import { buildSchedule } from "@/lib/schedule";
-import { validateProposal, errorFor, ZERO_HASH, type Terms } from "@/lib/terms";
+import {
+  validateProposal,
+  validateTerms,
+  errorFor,
+  ZERO_HASH,
+  type Terms,
+} from "@/lib/terms";
 import {
   annualisedRate,
   formatBps,
@@ -31,27 +37,25 @@ const PERIOD_LENGTHS = [
 type Draft = {
   borrower: string;
   principal: string;
-  minPrincipal: string;
   couponBps: string;
   servicingFeeBps: string;
   periodCount: string;
   periodLength: number;
-  fundingDeadlineHours: string;
   gracePeriod: number;
   cureWindow: number;
+  acceptHours: string;
 };
 
 const INITIAL: Draft = {
   borrower: "",
   principal: "100,000.00",
-  minPrincipal: "50,000.00",
   couponBps: "100",
   servicingFeeBps: "50",
   periodCount: "12",
   periodLength: 30 * DAY,
-  fundingDeadlineHours: "48",
   gracePeriod: 3 * DAY,
   cureWindow: 30 * DAY,
+  acceptHours: "48",
 };
 
 function toTerms(d: Draft, now: number): { terms: Terms | null; parseError?: string } {
@@ -60,14 +64,13 @@ function toTerms(d: Draft, now: number): { terms: Terms | null; parseError?: str
       terms: {
         borrower: d.borrower.trim(),
         principal: parseUsdc(d.principal),
-        minPrincipal: parseUsdc(d.minPrincipal),
         couponBps: Number(d.couponBps || 0),
         servicingFeeBps: Number(d.servicingFeeBps || 0),
         periodCount: Number(d.periodCount || 0),
         periodLength: d.periodLength,
-        fundingDeadline: now + Number(d.fundingDeadlineHours || 0) * HOUR,
         gracePeriod: d.gracePeriod,
         cureWindow: d.cureWindow,
+        acceptDeadline: now + Number(d.acceptHours || 0) * HOUR,
       },
     };
   } catch (e) {
@@ -93,9 +96,16 @@ export function ProposeForm() {
     () => (terms ? validateProposal(terms, documentHash, address, now) : []),
     [terms, documentHash, address, now],
   );
+  // The schedule depends on the terms alone, so it renders as soon as those are
+  // valid — an unfilled borrower or a missing document should not blank out the
+  // preview the originator is using to check their own numbers.
+  const termErrors = useMemo(
+    () => (terms ? validateTerms(terms, now) : []),
+    [terms, now],
+  );
   const schedule = useMemo(
-    () => (terms && errors.length === 0 ? buildSchedule(terms, now) : null),
-    [terms, errors, now],
+    () => (terms && termErrors.length === 0 ? buildSchedule(terms, now) : null),
+    [terms, termErrors, now],
   );
 
   const apr = terms ? annualisedRate(terms.couponBps, terms.periodLength) : 0;
@@ -146,7 +156,7 @@ export function ProposeForm() {
 
         <Field
           label="Principal"
-          hint="Target raise, in USDC."
+          hint="Face value of the loan, in USDC. This is also the token supply — you hold all of it at mint."
           error={errorFor(errors, "principal") ?? parseError}
         >
           <input
@@ -157,18 +167,6 @@ export function ProposeForm() {
           />
         </Field>
 
-        <Field
-          label="Minimum raise"
-          hint="Below this at the deadline, the note cancels and lenders are refunded."
-          error={errorFor(errors, "minPrincipal")}
-        >
-          <input
-            className={inputCls}
-            value={draft.minPrincipal}
-            inputMode="decimal"
-            onChange={(e) => set("minPrincipal", e.target.value)}
-          />
-        </Field>
 
         <Field
           label="Coupon"
@@ -250,12 +248,16 @@ export function ProposeForm() {
               onChange={(e) => set("servicingFeeBps", e.target.value)}
             />
           </Field>
-          <Field label="Funding window" hint="Hours from now." error={errorFor(errors, "fundingDeadline")}>
+          <Field
+            label="Acceptance window"
+            hint="Hours the borrower has to accept. After that the proposal expires and anyone can close it."
+            error={errorFor(errors, "acceptDeadline")}
+          >
             <input
               className={inputCls}
-              value={draft.fundingDeadlineHours}
+              value={draft.acceptHours}
               inputMode="numeric"
-              onChange={(e) => set("fundingDeadlineHours", e.target.value)}
+              onChange={(e) => set("acceptHours", e.target.value)}
             />
           </Field>
         </div>

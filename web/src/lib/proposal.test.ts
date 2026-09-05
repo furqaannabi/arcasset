@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
 import { validateProposal, type Terms } from "@/lib/terms";
 const ONE = 10n ** 18n;
-const t: Terms = { borrower: "0x00000000000000000000000000000000000000bb", principal: 100n*ONE,
-  minPrincipal: 50n*ONE, couponBps: 100, servicingFeeBps: 50, periodCount: 12,
-  periodLength: 2592000, fundingDeadline: 2000000000, gracePeriod: 259200, cureWindow: 2592000 };
+const t: Terms = { borrower: "0x00000000000000000000000000000000000000bb", principal: 100n*ONE, couponBps: 100, servicingFeeBps: 50, periodCount: 12,
+  periodLength: 2592000, gracePeriod: 259200, cureWindow: 2592000, acceptDeadline: 1800000000 };
 const H = "0x" + "11".repeat(32);
 const now = 1700000000;
 test("originator cannot be their own borrower", () => {

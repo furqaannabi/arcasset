@@ -8,15 +8,14 @@
 
 export type Terms = {
   borrower: string; // the counterparty who owes; never the originator
-  principal: bigint;
-  minPrincipal: bigint;
+  principal: bigint; // face value; also the total token supply
   couponBps: number;
   servicingFeeBps: number;
   periodCount: number;
   periodLength: number; // seconds
-  fundingDeadline: number; // unix seconds
   gracePeriod: number;
   cureWindow: number;
+  acceptDeadline: number; // unix seconds; borrower must accept before this
 };
 
 export const ZERO_HASH =
@@ -74,15 +73,6 @@ export function validateTerms(terms: Terms, now: number): FieldError[] {
   if (terms.principal <= 0n) {
     errors.push({ field: "principal", message: "Principal must be greater than zero." });
   }
-  if (terms.minPrincipal > terms.principal) {
-    errors.push({
-      field: "minPrincipal",
-      message: "Minimum raise cannot exceed the target principal.",
-    });
-  }
-  if (terms.minPrincipal < 0n) {
-    errors.push({ field: "minPrincipal", message: "Minimum raise cannot be negative." });
-  }
   if (terms.couponBps > LIMITS.MAX_COUPON_BPS) {
     errors.push({
       field: "couponBps",
@@ -107,14 +97,14 @@ export function validateTerms(terms: Terms, now: number): FieldError[] {
       message: "Periods must be at least one minute long.",
     });
   }
-  if (terms.fundingDeadline <= now) {
-    errors.push({
-      field: "fundingDeadline",
-      message: "Funding deadline must be in the future.",
-    });
-  }
   // Not a contract check, but a note whose cure window is shorter than its
   // grace period can be marked defaulted before it can be marked delinquent.
+  if (terms.acceptDeadline <= now) {
+    errors.push({
+      field: "acceptDeadline",
+      message: "Acceptance window must be in the future.",
+    });
+  }
   if (terms.cureWindow > 0 && terms.cureWindow < terms.gracePeriod) {
     errors.push({
       field: "cureWindow",

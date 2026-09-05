@@ -8,14 +8,13 @@ const DAY = 86_400;
 const base: Terms = {
   borrower: "0x00000000000000000000000000000000000000bb",
   principal: 100_000n * ONE,
-  minPrincipal: 50_000n * ONE,
   couponBps: 100, // 1% per period
   servicingFeeBps: 50, // 0.5%
   periodCount: 12,
   periodLength: 30 * DAY,
-  fundingDeadline: 2_000_000_000,
   gracePeriod: 3 * DAY,
   cureWindow: 30 * DAY,
+  acceptDeadline: 1_800_000_000,
 };
 
 test("coupon is per period, not annualised", () => {
@@ -62,11 +61,9 @@ test("rejects what NoteFactory.issue would reject", () => {
   const now = 1_700_000_000;
   const f = (t: Partial<Terms>) => validateTerms({ ...base, ...t }, now).map((e) => e.field);
   expect(f({ principal: 0n })).toContain("principal");
-  expect(f({ minPrincipal: 200_000n * ONE })).toContain("minPrincipal");
   expect(f({ couponBps: 5_001 })).toContain("couponBps");
   expect(f({ servicingFeeBps: 501 })).toContain("servicingFeeBps");
   expect(f({ periodCount: 0 })).toContain("periodCount");
-  expect(f({ fundingDeadline: now })).toContain("fundingDeadline");
   expect(f({})).toEqual([]);
 });
 
