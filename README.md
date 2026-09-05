@@ -19,6 +19,12 @@ subgraph/    The Graph — notes, periods, repayments, delinquency, servicing ac
 web/         Next.js — issue, note detail, agent console, intelligence storefront
 ```
 
+## Docs
+
+Specs live in [`docs/`](docs/) — overview, architecture, contracts, subgraph,
+agent, intel API, web, identity, milestones. Read the relevant one before
+changing an interface. Working rules are in [CLAUDE.md](CLAUDE.md).
+
 ## Status
 
-Day 1 — scaffold.
+Day 2 — specs written, implementation starting.
