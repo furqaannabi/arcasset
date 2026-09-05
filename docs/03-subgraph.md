@@ -92,20 +92,21 @@ type Note @entity {
   metadataURI: String!
 
   principal: BigInt!
-  minPrincipal: BigInt!
-  raised: BigInt!
   couponBps: Int!
   servicingFeeBps: Int!
   periodCount: Int!
   periodLength: BigInt!
   gracePeriod: BigInt!
   cureWindow: BigInt!
-  fundingDeadline: BigInt!
 
   status: NoteStatus!
   issuedAt: BigInt!
   activatedAt: BigInt
   closedAt: BigInt
+
+  listedAmount: BigInt!           # currently escrowed and for sale
+  soldAmount: BigInt!             # cumulative, primary sales only
+  originatorRetained: BigInt!     # supply the originator still holds
 
   periodsSettled: Int!
   periodsMissed: Int!
@@ -115,6 +116,7 @@ type Note @entity {
 
   periods:    [Period!]!    @derivedFrom(field: "note")
   positions:  [Position!]!  @derivedFrom(field: "note")
+  sales:      [Sale!]!      @derivedFrom(field: "note")
   repayments: [Repayment!]! @derivedFrom(field: "note")
   actions:    [ServicingAction!]! @derivedFrom(field: "note")
 }
@@ -135,14 +137,38 @@ type Period @entity {
   servicingFee: BigInt
 }
 
-type Position @entity {
-  id: Bytes!                      # note address ++ lender address
+type Listing @entity {
+  id: Bytes!                      # note address
   note: Note!
-  lender: Bytes!
-  funded: BigInt!
+  amount: BigInt!                 # still escrowed
+  priceBps: Int!
+  open: Boolean!
+  listedTotal: BigInt!            # cumulative ever listed
+  delistedTotal: BigInt!          # cumulative pulled back
+  firstListedAt: BigInt!
+  updatedAt: BigInt!
+}
+
+type Sale @entity(immutable: true) {
+  id: Bytes!                      # tx hash ++ log index
+  note: Note!
+  buyer: Bytes!
+  amount: BigInt!
+  paid: BigInt!
+  priceBps: Int!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+type Position @entity {
+  id: Bytes!                      # note address ++ holder address
+  note: Note!
+  holder: Bytes!
+  balance: BigInt!                # authoritative, tracked through Transfer
+  bought: BigInt!                 # acquired in the primary offering
+  paid: BigInt!                   # what they paid for it
   claimed: BigInt!
-  refunded: BigInt!
-  firstFundedAt: BigInt!
+  firstHeldAt: BigInt!
 }
 
 type Repayment @entity(immutable: true) {
@@ -209,7 +235,6 @@ commit.
 | NoteFactory | `NoteIssued` | create `Note`, create `periodCount` `Period` rows as `Pending`, bump `Originator.notesIssued`, template-index the new note |
 | | `Funded` | upsert `Position`, bump `Note.raised` |
 | | `FundingClosed` | set `status`, `activatedAt`; backfill `Period.start/end`; bump `Originator.principalRaised` |
-| | `Refunded` | bump `Position.refunded` |
 | | `Claimed` | bump `Position.claimed` |
 | | `StatusChanged` | set `Note.status`; on terminal set `closedAt`, bump matured/defaulted counters on both parties |
 | RepaymentVault | `Repaid` | create `Repayment`, bump `Period.paid` / `Note.totalRepaid` / `Originator.principalRepaid`, set `byThirdParty` |
@@ -227,6 +252,11 @@ Every handler also updates the current `ProtocolDay`.
 **`latenessSeconds`** is `max(0, settledAt - period.end)`. It is the single field
 the whole punctuality product is built on; keep the definition here and nowhere
 else.
+
+`Note.originatorRetained` is derived from the originator's `Position.balance`,
+not from `principal - soldAmount`. The two agree only until the originator
+transfers or buys back, and a figure that quietly stops being true is worse than
+one that is obviously derived.
 
 **Cure detection:** a `Repaid` on a period already `Missed` sets it to `Cured`
 and bumps `Originator.periodsCured`. A cured period counts as both missed and cured

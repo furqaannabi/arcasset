@@ -14,7 +14,7 @@ wants to fund a receivable or a revenue advance on-chain hits three walls:
    mark delinquency, and distribute coupons. At small ticket sizes that labor
    costs more than the spread.
 3. **Underwriting data is trapped.** The repayment behaviour that would let the
-   next lender price the next note stays inside whoever serviced the last one.
+   next holder price the next note stays inside whoever serviced the last one.
 
 Sybil issuance makes all three worse: an anonymous issuer can spin up fresh
 addresses after a default, so repayment history has no anchor.
@@ -26,9 +26,14 @@ ArcAsset is three things stacked:
 1. **A note primitive on Arc.** A verified originator proposes an `RWANote`
    against a loan they have already made, naming a verified borrower and the
    agreement behind it. The borrower accepts from their own key, an admin reads
-   the agreement and approves, and only then is anything minted. Lenders fund it
+   the agreement and approves, and only then is anything minted. Holders fund it
    in native USDC; repayments land in a `RepaymentVault` and are claimable
    pro-rata.
+
+   The originator holds all of it at mint and sells down what they choose —
+   25%, say — keeping the rest. They keep the exposure they do not sell, and
+   collect on it, which is the correct alignment: an originator with skin left
+   in the deal is a different counterparty from one who exited entirely.
 2. **An autonomous servicing agent.** The agent reads the subgraph, and for every
    note it services it advances periods, marks missed payments delinquent,
    triggers distributions, and posts a servicing action on-chain. It is paid a
@@ -50,7 +55,7 @@ and the dataset is the durable asset.
 | **Originator** | Already made the loan. Proposes terms and the agreement, mints once approved, receives the proceeds, delegates servicing | Must pass Selfie Check. Cannot name themselves as borrower |
 | **Borrower** | Owes the money. Accepts the proposal, then repays each period | Must pass Selfie Check, and must accept from their own key before an admin will look at it |
 | **Admin** | Reads the agreement and approves or rejects the proposal | Can only block. Cannot alter terms, mint, accept for anyone, or touch funds |
-| **Lender** | Funds notes, claims coupons and principal pro-rata | Permissionless; no verification required to lend |
+| **Holder** | Buys a slice of the note from the originator's offering, claims coupons and principal pro-rata, may sell on | Permissionless; no verification required to buy |
 | **Servicing agent** | Advances periods, marks delinquency, distributes | Must hold a servicing delegation from the originator |
 | **Intel buyer** | Queries `/intel/*` | Pays per query in USDC; no account needed |
 
@@ -84,9 +89,13 @@ Borrower accepts from their own key ────► Accepted
         │
 Admin reviews the agreement ────────────► Approved   (or Rejected, with a reason)
         │
-Originator mints ──► digest re-checked ──► RWANote deployed, status=Funding
+Originator mints ──► digest re-checked ──► RWANote deployed, status=Active
+        │                                    originator holds 100% of supply
         │
-Lenders fund ──► proceeds to originator, status=Active
+Originator lists a slice for sale ──► Offering escrows it, priced in bps of par
+        │   (delist unsold at any time — it is their inventory)
+        │
+Buyers buy ──► tokens to buyer, proceeds to originator
         │
         ▼
    ┌─────────────────────────── per period ───────────────────────────┐
@@ -94,7 +103,7 @@ Lenders fund ──► proceeds to originator, status=Active
    │  Agent observes via subgraph                                     │
    │    ├── on time   ──► ServicingRelay.settlePeriod()               │
    │    └── past grace ──► ServicingRelay.markDelinquent()            │
-   │  Lenders claim pro-rata                                          │
+   │  Holders claim pro-rata                                          │
    │  Every action emits an event ──► subgraph ──► /intel/*           │
    └──────────────────────────────────────────────────────────────────┘
         │
@@ -112,7 +121,7 @@ Lenders fund ──► proceeds to originator, status=Active
   subgraph is the read layer for the UI and the source for the paid API. One
   index, three consumers.
 - **World** — repayment history is worthless without an identity anchor. Selfie
-  Check gates both write-side roles — origination and borrowing — while lending
+  Check gates both write-side roles — origination and borrowing — while buying
   stays open to anyone. One nullifier per address means two verified addresses
   are two humans, which is exactly what stops an originator inventing a borrower
   to fabricate a record. It gates the write side of reputation only.
@@ -125,8 +134,9 @@ intel endpoints for both party types, five web screens.
 
 **Non-goals (cut, say so out loud in the demo):**
 
-- Secondary trading of notes. Notes are ERC-20 and transferable, but there is no
-  order book or AMM in scope.
+- A secondary market. Notes are ERC-20 and transferable, and the originator's
+  primary offering is in scope, but there is no order book, no AMM, and no
+  holder-to-holder venue.
 - Multi-tranche or waterfall structures.
 - Real legal wrappers. The note is a claim on a smart contract, not on a court.
   On-chain acceptance records that the borrower agreed; it does not make the
@@ -134,9 +144,6 @@ intel endpoints for both party types, five web screens.
 - Automated document reading. The admin reviews the agreement themselves; we do
   not extract or parse it. The chain records the hash and who approved it.
 - A decentralised approver set. One admin key, and we say so.
-- A primary sale desk. The originator does not hold supply and sell it down;
-  lenders fund the note directly and the proceeds go to the originator. Same
-  economics, one less contract.
 - Multi-currency. USDC only.
 - Decentralised agent market. One agent, our keys, delegation is on-chain so it
   is *replaceable* in principle — that's the story, not a shipped feature.

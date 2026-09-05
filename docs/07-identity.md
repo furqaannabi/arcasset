@@ -3,7 +3,7 @@
 **Status: Spec**
 
 World Selfie Check gates both write-side roles — originating and borrowing.
-Lending stays open to anyone.
+Holding stays open to anyone.
 
 ## What it is for
 
@@ -26,7 +26,7 @@ it is what makes the dataset mean anything.
 
 ## What it is deliberately **not** for
 
-- **Not for lenders.** Lending is permissionless. Adding friction to the capital
+- **Not for holders.** Holding is permissionless. Adding friction to the capital
   side to solve a problem on the write side would be a straightforward mistake.
 - **Not KYC.** We learn nothing about who the person is — no name, no country, no
   document. It answers "a live human, not seen before here" and nothing more.
@@ -87,8 +87,8 @@ overclaim a judge can puncture in one question.
 `revoke(address)` is owner-only and is an abuse response, not a business rule:
 
 - Blocks new `issue` calls immediately.
-- Does **not** touch outstanding notes. Lenders' claims and the servicing
-  schedule are untouched — punishing lenders for an issuer's behaviour would be
+- Does **not** touch outstanding notes. Holders' claims and the servicing
+  schedule are untouched — punishing holders for an issuer's behaviour would be
   a worse failure than the one being punished.
 - Emits `IssuerRevoked`; the subgraph flags the issuer and the intel API returns
   `revoked: true` on the scorecard.

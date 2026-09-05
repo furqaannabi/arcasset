@@ -24,7 +24,7 @@ built against fixed interfaces, not against each other's progress.
 | **Sep 4** | Scaffold, README, stack decision | ✅ committed |
 | **Sep 5** | Specs (this folder). Foundry + Next.js + subgraph skeletons compile and run empty | ✅ Specs done, `web/` scaffolded and green (typecheck, lint, build, 9 tests). ⚠️ `contracts/` and `subgraph/` skeletons still missing — carry to Sep 6 |
 | **Sep 6** | `PartyRegistry`, `IssuanceQueue` (propose/accept/approve/mint), `NoteFactory`, `RWANote` funding path. Web: `/proposal/[id]` | A proposal can be accepted by a second wallet, approved by a third, minted, and funded on Anvil from the UI |
-| **Sep 7** | `RepaymentVault`, `ServicingRelay`, claims. Guard tests from [02](02-contracts.md#guards--every-one-of-these-is-a-test) | Full lifecycle passes in Foundry: issue → fund → repay → settle → claim |
+| **Sep 7** | `Offering` (list/reprice/delist/buy), `RepaymentVault`, `ServicingRelay`, claims. Guard tests from [02](02-contracts.md#guards--every-one-of-these-is-a-test) | Full lifecycle passes in Foundry: issue → fund → repay → settle → claim |
 | **Sep 8** | Subgraph: all entities and handlers, local `graph-node` | Every entity in [03](03-subgraph.md#entities) populates from a seeded fixture run |
 | **Sep 9** | Agent decision loop + safety rails. `/note/[address]` | Agent settles a period unattended on Anvil; `/health` reports lag correctly |
 | **Sep 10** | Deploy to Arc testnet, subgraph to Studio, seed history | Real notes with real repayment history are indexed and visible |
@@ -64,32 +64,42 @@ video is a disqualification, not a deduction.
 3. **Admin approves** (15s) — switch to the admin, open the same proposal, show
    the document hash, approve. Note that the admin can only block: approving a
    modest loan and minting a predatory one fails, because the digest changes.
-4. **Mint and fund** (25s) — originator mints, third wallet funds. `Active`.
-5. **Repay period 1** (15s) — borrower repays. Watch it index.
-6. **Agent settles, unattended** (45s) — stay on the agent log. Do not touch
-   anything. The period settles, lender's claimable goes up, servicing fee paid.
+4. **Mint and list** (25s) — originator mints and holds 100%. They list 25% at
+   97 — a 3% discount to par. Say the number out loud: they keep 75% of the
+   exposure, so they are still in the deal.
+5. **A buyer buys** (20s) — fourth wallet buys the slice. Then the originator
+   delists what is left, to show the unsold part is their inventory and comes
+   back on demand.
+6. **Repay period 1** (15s) — borrower repays. Watch it index.
+7. **Agent settles, unattended** (45s) — stay on the agent log. Do not touch
+   anything. The period settles, holder's claimable goes up, servicing fee paid.
    This is the moment; give it silence.
-7. **Miss period 2** (30s) — do nothing. Grace elapses. Agent marks delinquent
+8. **Miss period 2** (30s) — do nothing. Grace elapses. Agent marks delinquent
    on its own.
-8. **Sell the data** (40s) — a fifth wallet, never seen before, hits
+9. **Sell the data** (35s) — a fifth wallet, never seen before, hits
    `/intel/borrower/:address`, gets a 402, pays $0.50 in USDC, receives the
    scorecard showing the miss we just created live.
-9. **Close** (15s) — one index, three consumers; the servicer's byproduct is the
+10. **Close** (15s) — one index, three consumers; the servicer's byproduct is the
    asset.
 
-Totals 3:40, inside the cap with 20 seconds of headroom. Period length in the
-demo config is minutes and `TICK_INTERVAL_MS=5000`, so steps 6–7 land inside
-that budget. Step 6 keeps its silence even under the tighter cut — the agent
+Totals 3:55, inside the cap with five seconds to spare — which is not enough. Period length in the
+demo config is minutes and `TICK_INTERVAL_MS=5000`, so steps 7–8 land inside
+that budget. Step 7 keeps its silence even under the tighter cut — the agent
 acting unattended is the submission, and rushing it to save ten seconds trades
 the only moment that matters for time we do not need.
 
-Five wallets are needed: originator, borrower, admin, lender, intel buyer. Have
+Five wallets are needed: originator, borrower, admin, holder, intel buyer. Have
 them funded and open in separate browser profiles before recording; switching
 accounts inside one wallet on camera is where a live run falls apart.
 
-Nine beats in under four minutes is the real risk in this script, and the
-issuance lifecycle is what made it nine. If a rehearsal runs long, the cut is
-step 4's funding detail and step 9, not step 6.
+**Ten beats in four minutes does not fit, and pretending otherwise is how the
+submission gets disqualified.** Cut before rehearsing, not after: drop step 5's
+delist demonstration (15s) and compress step 3 by having the admin approval
+pre-staged on screen (10s). That lands at 3:30 with real headroom. The offering
+still shows, because a buyer buying is the point; it is the round-trip of
+delisting that is expendable.
+
+If it still runs long, cut step 10 and end on the data. Never cut step 7.
 
 ## Rehearsal
 

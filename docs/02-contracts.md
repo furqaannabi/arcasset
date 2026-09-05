@@ -11,25 +11,21 @@ timestamps are Unix seconds as `uint64`. Periods are half-open `[start, end)`.
 
 ```solidity
 enum NoteStatus {
-    Funding,     // approved and deployed; accepting lender capital
-    Active,      // funded, coupons accruing
+    Active,      // minted; coupons accruing from period 0
     Delinquent,  // at least one period past grace, curable
     Matured,     // all periods settled, principal returned
-    Defaulted,   // terminal; delinquency exceeded cure window
-    Cancelled    // funding closed under the minimum, lenders refunded
+    Defaulted    // terminal; delinquency exceeded cure window
 }
 
 enum PeriodStatus { Pending, Settled, Missed, Cured }
 
 struct Terms {
     address borrower;        // owes the money; must be verified and must accept
-    uint256 principal;       // target raise, native USDC base units (18dp)
-    uint256 minPrincipal;    // below this at funding deadline => Cancelled
+    uint256 principal;       // face value of the loan, native USDC base units (18dp)
     uint16  couponBps;       // per-period coupon, basis points of principal
     uint16  servicingFeeBps; // basis points of each repayment, to feeRecipient
     uint16  periodCount;     // total periods, >= 1
     uint64  periodLength;    // seconds per period
-    uint64  fundingDeadline; // funding must complete before this
     uint64  gracePeriod;     // seconds after period end before Missed
     uint64  cureWindow;      // seconds after Missed before Defaulted
     uint64  acceptDeadline;  // borrower must accept the proposal before this
@@ -65,7 +61,7 @@ event PartyRevoked(address indexed party, uint64 timestamp);
 - Verification does not expire. Revocation is manual and owner-only, and is an
   abuse lever, not a business rule.
 - `revoke` blocks *new* issuance and *new* acceptance. It never touches notes
-  already outstanding — existing lenders' claims survive.
+  already outstanding — existing holders' claims survive.
 
 **One nullifier per address, and one address per nullifier, together give us
 something we get for free and should not waste: two distinct verified addresses
@@ -137,7 +133,7 @@ funds, cannot accept on a borrower's behalf, and cannot approve something the
 borrower has not already accepted. So the trust placed in the key is exactly
 *"can block issuance"* — real centralisation, and worth naming rather than
 dressing up: a lost or hostile admin key halts new issuance for everyone. It
-touches no outstanding note, no vault balance and no lender claim.
+touches no outstanding note, no vault balance and no holder claim.
 
 This reverses an earlier position in this spec, which argued no admin gate was
 warranted because the nullifier already proved personhood. That reasoning was
@@ -160,9 +156,9 @@ and attributable, and should never be described as more than that.
 - `terms.borrower != msg.sender` — else `SelfDealing()`. Combined with one
   address per nullifier, this is what makes the two parties two people.
 - `documentHash != 0` — else `NoDocument()`.
-- `acceptDeadline > block.timestamp` and `fundingDeadline > acceptDeadline`.
+- `acceptDeadline > block.timestamp`.
 - `periodCount >= 1`, `periodLength >= 1 minutes`, `principal > 0`,
-  `minPrincipal <= principal`, `couponBps <= 5000`, `servicingFeeBps <= 500`.
+  `couponBps <= 5000`, `servicingFeeBps <= 500`.
 
 The `periodLength` floor is one **minute**, not one hour. The floor exists to
 reject nonsense notes, not to enforce realistic credit terms, and an hour floor
@@ -197,28 +193,37 @@ event NoteIssued(
     uint256 principal,
     uint16  couponBps,
     uint16  periodCount,
-    uint64  periodLength,
-    uint64  fundingDeadline
+    uint64  periodLength
 );
 ```
 
 Notes are deployed with CREATE2 on `keccak256(originator, proposalId)` so the
 address is known before the transaction lands — the UI shows it optimistically.
 
-A note opens directly in `Funding`. There is no `Pending` note state any more:
-acceptance and approval both happen on the proposal, before anything is
-deployed, so a note that exists is a note all three parties have cleared.
+A note opens directly in `Active`, and the originator receives **100% of the
+supply**.
+
+There is no funding round, and removing it fixed an inconsistency rather than
+adding a feature. The earlier design had holders "fund" the note and the
+proceeds go to the originator — but the originator has already lent the money.
+There is nothing to raise. What they need is to *sell* a claim they already
+hold, which is what [Offering](#offering) does. A funding window with a minimum
+raise and a refund path was vestigial: leftover machinery from the two-party
+bond model, describing a capital formation event that does not happen here.
+
+So: supply equals `principal` in base units, one token is one base unit of face
+value, and the originator starts holding all of it. Coupons accrue from mint.
+Whatever they have not sold, they still own — and still collect on, which is
+the correct economics: an originator who sells 25% keeps 75% of the exposure.
 
 ## RWANote
 
 ERC-20 where one token is one unit of principal contributed. Balance is a
-lender's pro-rata share; transfers move future claims with it.
+holder's pro-rata share; transfers move future claims with it.
 
 ```solidity
-function fund() external payable;               // Funding only, amount is msg.value
-function refund() external;                     // Cancelled only
 function claim() external returns (uint256);    // sends native USDC to msg.sender
-function claimable(address lender) external view returns (uint256);
+function claimable(address holder) external view returns (uint256);
 
 function status() external view returns (NoteStatus);
 function terms() external view returns (Terms memory);
@@ -227,23 +232,28 @@ function period(uint16 index) external view returns (
 );
 function currentPeriod() external view returns (uint16);
 
-event Funded(address indexed lender, uint256 amount, uint256 totalRaised);
-event FundingClosed(uint256 totalRaised, NoteStatus status);
-event Refunded(address indexed lender, uint256 amount);
-event Claimed(address indexed lender, uint256 amount);
+event Claimed(address indexed holder, uint256 amount);
 event StatusChanged(NoteStatus indexed from, NoteStatus indexed to, uint64 timestamp);
 ```
 
 **Invariants**
 
-- `totalSupply()` equals total USDC contributed during funding, always.
+- `totalSupply()` equals `terms.principal` and never changes. It is minted once,
+  entirely to the originator.
 - Sum of all `claimable()` never exceeds the vault's USDC balance for this note.
   Every distribution updates an accumulator; claims never mint claims.
-- Period `i` spans `[activatedAt + i*periodLength, activatedAt + (i+1)*periodLength)`.
-  `activatedAt` is set once, when funding closes successfully.
+- Period `i` spans `[mintedAt + i*periodLength, mintedAt + (i+1)*periodLength)`.
+  `mintedAt` is set once, in the constructor. The schedule is knowable the moment
+  the note exists, which it was not when it depended on a funding round closing.
 - A note in `Matured` or `Defaulted` never transitions again. Terminal is terminal.
-- `fund` after `fundingDeadline` reverts. Anyone may call `closeFunding()` after
-  the deadline; it is permissionless so the note cannot be held hostage.
+- Every holder's claim follows their balance, so **transfers must settle
+  entitlements before they move tokens.** This is the classic dividend-token
+  hazard and it is the most likely place for this contract to lose money: if a
+  transfer moves tokens without first crystallising what each side is owed, the
+  recipient can claim coupons that accrued before they held anything, and the
+  sender loses coupons they earned. `_update` settles both parties into a
+  `withdrawable` ledger first, then moves the balance. Tested with a transfer
+  mid-schedule, in both directions, including self-transfer and zero-value.
 
 **Consent, and where it lives**
 
@@ -258,7 +268,7 @@ borrower one transaction, and on Arc that transaction costs approximately
 nothing. The borrower calling `accept()` themselves is the cheapest thing to get
 right and the easiest thing for a third party to verify.
 
-**Rounding.** Pro-rata claims round *down* per lender. The dust remainder stays
+**Rounding.** Pro-rata claims round *down* per holder. The dust remainder stays
 in the vault and is swept into the final period's distribution. Rounding never
 lets the sum of claims exceed the balance.
 
@@ -267,22 +277,109 @@ buys us simplicity — no approvals, no allowance race, no fee-on-transfer or
 rebasing token to defend against — and costs us one thing: every payout hands
 control to the recipient.
 
-- `claim`, `refund`, and every distribution send value with `call{value: …}("")`
+- `claim` and every distribution send value with `call{value: …}("")`
   and check the return. Never `transfer`/`send` — the 2300-gas stipend breaks
-  smart-contract lenders, and a note whose lender is a multisig must still work.
+  smart-contract holders, and a note whose holder is a multisig must still work.
 - **Checks-effects-interactions is load-bearing now, not stylistic.** Zero the
-  lender's claimable and update the accumulator *before* the call. A lender
+  holder's claimable and update the accumulator *before* the call. A holder
   contract that re-enters `claim` must find nothing left to claim.
-- `nonReentrant` on `claim`, `refund`, and the relay's settlement entry point, as
+- `nonReentrant` on `claim`, `Offering.buy`, and the relay's settlement entry
+  point, as
   a second line of defence behind correct ordering — not instead of it.
 - A recipient that reverts on receive must not be able to block anyone else. A
-  failed payout reverts only that lender's own claim; it never bricks the note or
+  failed payout reverts only that holder's own claim; it never bricks the note or
   a distribution to others.
 - The vault's own accounting is authoritative, never `address(this).balance`.
   Value can be force-sent via `selfdestruct`, so a balance check as an invariant
   would be griefable.
 - Overpayment on `repay` is credited to the next unsettled period, so the vault
   never needs to push value back to a payer mid-call.
+
+## Offering
+
+Where the originator sells down the exposure they hold. Nothing here touches the
+loan itself — an offering is a claim changing hands, and the borrower neither
+knows nor cares.
+
+```solidity
+struct Listing {
+    uint256 amount;      // note tokens still escrowed and for sale
+    uint16  priceBps;    // price as basis points of face value
+    bool    open;
+}
+
+function list(uint256 noteId, uint256 amount, uint16 priceBps) external;  // originator
+function relist(uint256 noteId, uint16 priceBps) external;                // reprice
+function delist(uint256 noteId, uint256 amount) external;                 // pull unsold
+function buy(uint256 noteId, uint256 amount) external payable;
+
+function listingOf(uint256 noteId) external view returns (Listing memory);
+function costOf(uint256 noteId, uint256 amount) external view returns (uint256);
+
+event Listed(uint256 indexed noteId, address indexed originator, uint256 amount, uint16 priceBps);
+event Repriced(uint256 indexed noteId, uint16 oldPriceBps, uint16 newPriceBps);
+event Delisted(uint256 indexed noteId, uint256 amount, uint256 remaining);
+event Bought(uint256 indexed noteId, address indexed buyer, uint256 amount, uint256 paid, uint16 priceBps);
+```
+
+**Priced in basis points of face value, not in currency.** `priceBps = 9700`
+means 97% of par: 3% discount. This is how receivables actually trade, it makes
+the discount the visible quantity rather than something a buyer has to derive,
+and it keeps the price a `uint16` instead of a per-token rate that would be
+awkward at 18 decimals. Cost is `amount * priceBps / 10_000`. Above par is
+allowed and capped at `MAX_PRICE_BPS = 20_000`; a note whose coupon is generous
+can legitimately trade over 100.
+
+**Tokens are escrowed, so a buy cannot fail to deliver.** `list` transfers the
+tokens into the Offering. The originator can put up any fraction — 25% of supply
+is a listing of `principal * 25 / 100` — and may list more later up to whatever
+they still hold.
+
+**`delist` pulls unsold tokens back at any time, in whole or in part.** This is
+the originator's inventory; nobody else has a claim on it. A part-delist leaves
+the rest for sale. Delisting everything closes the listing.
+
+Because `buy` is atomic, delisting cannot be used to strand a buyer mid-purchase
+— the worst case is a buy that reverts against an emptied listing, which the UI
+must treat as an ordinary outcome rather than an error state.
+
+**Guards**
+
+| Call | Reverts when |
+|---|---|
+| `list` / `relist` / `delist` | caller is not the note's originator → `NotOriginator()` |
+| `list` | `amount == 0`, or exceeds the originator's balance → `InsufficientSupply()` |
+| `list` / `relist` | `priceBps == 0` or `> MAX_PRICE_BPS` → `BadPrice()` |
+| `delist` | `amount` exceeds what is escrowed → `NotListed()` |
+| `buy` | `amount == 0`, or exceeds what remains → `InsufficientListing()` |
+| `buy` | `msg.value != costOf(noteId, amount)` → `WrongPayment()` |
+| all | note is `Matured` or `Defaulted` → `NoteTerminal()` |
+
+`buy` requires exact payment rather than accepting an overpayment and refunding
+the difference. Refunding means a second value transfer to an untrusted address
+inside the same call, which is reentrancy surface bought for nothing — the UI
+knows the price and can send it exactly.
+
+Proceeds go straight to the originator in the same transaction. The Offering
+never holds currency between calls, only escrowed tokens, so there is no pooled
+balance for an accounting bug to drain.
+
+**A delinquent note stays sellable, deliberately.** Distress is when a
+receivable most needs to change hands, and blocking it would just push the trade
+somewhere unobservable. The buyer sees the delinquency — it is on the note page
+and in the intel scorecard — and prices it.
+
+**Tests**
+
+- **Unit:** every row of the guard table.
+- **Unit:** list 25%, sell 10%, delist the remaining 15% — balances reconcile at
+  each step and the originator ends holding 90%.
+- **Unit:** a buy that would exceed the listing reverts rather than partially
+  filling.
+- **Unit:** proceeds land with the originator, not the Offering, and the
+  Offering's currency balance is zero after every call.
+- **Fuzz:** across any sequence of list/relist/delist/buy, escrowed tokens plus
+  originator balance plus buyer balances equals `totalSupply`.
 
 ## RepaymentVault
 
@@ -368,7 +465,7 @@ transaction it sent before revocation landed.
 
 Each is a named test, not a vibe:
 
-- **Fuzz:** sum of `claimable()` across lenders ≤ vault balance, for any funding
+- **Fuzz:** sum of `claimable()` across holders ≤ vault balance, for any funding
   distribution and any sequence of partial repayments.
 - **Fuzz:** rounding dust is monotonically non-decreasing until final settlement,
   then exactly zero.
@@ -392,9 +489,9 @@ Each is a named test, not a vibe:
   succeeds from any caller.
 - **Unit:** compromised-agent scenario — agent calls every relay entry point in
   every order and cannot move USDC to an address it controls.
-- **Unit:** a lender contract that re-enters `claim` from its `receive` gets
+- **Unit:** a holder contract that re-enters `claim` from its `receive` gets
   nothing on the second entry, and the note's accounting is unchanged.
-- **Unit:** a lender contract that reverts on `receive` cannot block another
-  lender's claim or a period settlement.
+- **Unit:** a holder contract that reverts on `receive` cannot block another
+  holder's claim or a period settlement.
 - **Unit:** value force-sent to the vault via `selfdestruct` does not change any
-  lender's `claimable`.
+  holder's `claimable`.

@@ -30,10 +30,16 @@
                        └──────────────────┘            │  RWANote  │
                                                        │  (ERC-20) │
                                                        └─────┬─────┘
-  ┌──────────┐  repay   ┌──────────────────┐  claim           │
-  │ Borrower │─────────►│  RepaymentVault  │─────────►┌──────────┐
-  └──────────┘          └──────────────────┘          │  Lender  │
-                                 ▲                    └──────────┘
+                       ┌──────────────────┐  escrows a slice │
+                       │     Offering     │◄─────────────────┘
+                       └────────┬─────────┘  originator lists;
+                                │             delists unsold anytime
+                                │ buy: tokens out, proceeds to originator
+                                ▼
+  ┌──────────┐  repay   ┌──────────────────┐  claim      ┌──────────┐
+  │ Borrower │─────────►│  RepaymentVault  │────────────►│  Holder  │
+  └──────────┘          └──────────────────┘             └──────────┘
+                                 ▲
                                  │ settle
                        ┌──────────────────┐
                        │  ServicingRelay  │◄─writes──┐
@@ -73,6 +79,7 @@ read-through and never authoritative.
 | World → PartyRegistry | Selfie Check proof, verified on-chain | World's verifier contract is correct; we do not re-implement it |
 | Originator → ServicingRelay | A delegation, scoped to one note | Originator can revoke; revocation takes effect next period |
 | Borrower → IssuanceQueue | One `accept()` from their own key | Nobody can accept for them. Without it no admin looks at it and nothing mints |
+| Originator → Offering | Escrowed tokens, priced in bps of par | Their own inventory. They may pull unsold tokens back at any time; a buy is atomic so nobody is stranded mid-purchase |
 | Admin → IssuanceQueue | Approve or reject, nothing else | A hostile or lost admin key halts *new* issuance for everyone. It cannot alter terms, mint, accept for a borrower, or reach any outstanding note or vault balance |
 | Agent → ServicingRelay | Period settlement calls | Agent key is hot. Relay bounds what it can do — see below |
 | Subgraph → agent | Note and period state | Indexer may lag. Agent must tolerate lag, never assume freshness |

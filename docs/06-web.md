@@ -61,7 +61,7 @@ looking at is the hash of the file they read. Nothing mints without one.
 Submit → `IssuanceQueue.propose` → redirect to `/proposal/[id]`. Nothing is
 deployed yet; do not show a note address, because there isn't one.
 
-Funding and repayment are native value transfers, so there is **no approval
+Buying and repayment are native value transfers, so there is **no approval
 step** — one transaction, not two. Do not build an allowance UI.
 
 ### `/proposal/[id]` — Acceptance and review
@@ -103,13 +103,23 @@ The main screen. Sections:
    two different questions; never blend them into one score.
 2. **Provenance** — the proposal this note came from: the document hash, who
    approved it and when. A note's legitimacy is a chain of three signatures, and
-   this is where a lender checks it rather than taking it on trust.
-3. **Funding** (status `Funding`) — progress toward `minPrincipal` and
-   `principal`, deadline countdown, fund input. Show the countdown in absolute
-   time too; relative-only timers lie across timezones.
+   this is where a holder checks it rather than taking it on trust.
+3. **Offering** — what is for sale, at what price in basis points of par, and
+   the implied discount stated in currency, not left for the buyer to work out.
+   Show what the originator has retained: a note where they kept 75% reads
+   differently from one where they sold everything, and that is the single most
+   useful number on the page for a buyer.
+
+   Connected as the originator, this is also the controls: list an amount,
+   reprice, delist unsold. Show the amount still held versus escrowed. A buy is
+   exact-payment, so quote the cost and send precisely that.
+
+   Connected as anyone else: amount available, cost for the quantity entered,
+   and buy. Handle "listing emptied while you were deciding" as an ordinary
+   outcome — the originator may delist at any time — not as an error.
 4. **Schedule** — every period as a row: dates, due, paid, status, lateness.
    The current period is highlighted. This table is the product.
-5. **Your position** (connected lender) — funded, claimed, claimable, claim
+5. **Your position** (connected holder) — funded, claimed, claimable, claim
    button.
 6. **Servicing log** — reverse-chronological `ServicingAction` list with tx
    links. Shows the agent doing its job.
