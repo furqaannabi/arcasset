@@ -88,9 +88,15 @@ event NoteIssued(
 **Checks on `issue`**
 
 - `IssuerRegistry.isVerified(msg.sender)` — else `IssuerNotVerified()`.
-- `periodCount >= 1`, `periodLength >= 1 hours`, `principal > 0`,
+- `periodCount >= 1`, `periodLength >= 1 minutes`, `principal > 0`,
   `minPrincipal <= principal`, `couponBps <= 5000`, `servicingFeeBps <= 500`.
 - `fundingDeadline > block.timestamp`.
+
+The `periodLength` floor is one **minute**, not one hour. The floor exists to
+reject nonsense notes, not to enforce realistic credit terms, and an hour floor
+would make the demo unmintable — the demo settles a period on camera, which
+needs periods measured in minutes. A testnet-only override was the alternative
+and is worse: it means demoing code that differs from the code being judged.
 
 Notes are deployed with CREATE2 on `keccak256(issuer, noteCount)` so the address
 is known before the transaction lands — the UI shows it optimistically.

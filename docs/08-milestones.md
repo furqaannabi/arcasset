@@ -4,6 +4,13 @@
 
 ETHOnline 2026, Sep 4–13. Two people: Furqaan, Apurva. Today is **Sep 5**.
 
+## Where we actually are
+
+End of Sep 5: specs settled, `web/` scaffolded and building, nothing on-chain.
+The frontend ran ahead of plan and the Foundry and subgraph skeletons ran
+behind — which matters, because Sep 6 assumes a compiling `contracts/` project
+exists. Start there before touching a screen.
+
 ## Split
 
 Roughly: one of us owns `contracts/` + `subgraph/`, the other owns `backend/` +
@@ -15,7 +22,7 @@ built against fixed interfaces, not against each other's progress.
 | Day | Target | Done when |
 |---|---|---|
 | **Sep 4** | Scaffold, README, stack decision | ✅ committed |
-| **Sep 5** | Specs (this folder). Foundry + Next.js + subgraph skeletons compile and run empty | `forge test` and `bun dev` both green on empty projects |
+| **Sep 5** | Specs (this folder). Foundry + Next.js + subgraph skeletons compile and run empty | ✅ Specs done, `web/` scaffolded and green (typecheck, lint, build, 9 tests). ⚠️ `contracts/` and `subgraph/` skeletons still missing — carry to Sep 6 |
 | **Sep 6** | `IssuerRegistry`, `NoteFactory`, `RWANote` funding path. Web: `/issue` form | A note can be issued and funded on Anvil from the UI |
 | **Sep 7** | `RepaymentVault`, `ServicingRelay`, claims. Guard tests from [02](02-contracts.md#guards--every-one-of-these-is-a-test) | Full lifecycle passes in Foundry: issue → fund → repay → settle → claim |
 | **Sep 8** | Subgraph: all entities and handlers, local `graph-node` | Every entity in [03](03-subgraph.md#entities) populates from a seeded fixture run |

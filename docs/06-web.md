@@ -6,6 +6,33 @@ Next.js App Router, wagmi + viem, TanStack Query against the subgraph. Four
 screens. No design system beyond Tailwind; the demo is judged on the loop being
 legible, not on polish.
 
+## As built (Sep 5)
+
+Scaffolded and green: `tsc --noEmit`, `eslint`, `next build`, and nine tests
+over the money formatting. Five routes serve; four are stubs that name their
+spec and due date rather than rendering placeholder data.
+
+| | |
+|---|---|
+| Next.js | 16.3.4, App Router, Turbopack |
+| React | 19.2.8 |
+| Chain | wagmi 3.7.7, viem 2.56.3, injected connector, cookie storage for SSR |
+| Data | TanStack Query 5, `staleTime` 10s |
+| Styling | Tailwind 4 |
+
+Two things in Next 16 differ from what you may expect, and both are load-bearing:
+
+- **`params` is a `Promise`.** Dynamic segments must `await params`. The older
+  synchronous shape does not compile.
+- **`tsconfig` targets ES2020**, raised from the `create-next-app` default of
+  ES2017, because bigint literals (`10n`) are a syntax error below ES2020 — and
+  every amount in this app is a bigint.
+
+Shared pieces already in place, to build the screens on rather than around:
+`lib/format.ts` (all money formatting), `lib/subgraph.ts` (the only read path),
+`lib/chain.ts` (chain, decimals, explorer links), and `components/states.tsx`
+(the four view states, the stale-indexer banner, and the `TxPhase` type).
+
 ## Screens
 
 ### `/issue` — Issue a note
