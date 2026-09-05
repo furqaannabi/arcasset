@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useAccount } from "wagmi";
+import { keccak256 } from "viem";
 import { buildSchedule } from "@/lib/schedule";
-import { validateTerms, errorFor, type Terms } from "@/lib/terms";
+import { validateProposal, errorFor, ZERO_HASH, type Terms } from "@/lib/terms";
 import {
   annualisedRate,
   formatBps,
@@ -28,6 +29,7 @@ const PERIOD_LENGTHS = [
 ] as const;
 
 type Draft = {
+  borrower: string;
   principal: string;
   minPrincipal: string;
   couponBps: string;
@@ -40,6 +42,7 @@ type Draft = {
 };
 
 const INITIAL: Draft = {
+  borrower: "",
   principal: "100,000.00",
   minPrincipal: "50,000.00",
   couponBps: "100",
@@ -55,6 +58,7 @@ function toTerms(d: Draft, now: number): { terms: Terms | null; parseError?: str
   try {
     return {
       terms: {
+        borrower: d.borrower.trim(),
         principal: parseUsdc(d.principal),
         minPrincipal: parseUsdc(d.minPrincipal),
         couponBps: Number(d.couponBps || 0),
@@ -71,8 +75,10 @@ function toTerms(d: Draft, now: number): { terms: Terms | null; parseError?: str
   }
 }
 
-export function IssueForm() {
-  const { isConnected } = useAccount();
+export function ProposeForm() {
+  const { address, isConnected } = useAccount();
+  const [documentHash, setDocumentHash] = useState<string>(ZERO_HASH);
+  const [documentName, setDocumentName] = useState<string>("");
   const [draft, setDraft] = useState<Draft>(INITIAL);
 
   // Pinned once per mount: a clock that ticks would make the preview jitter
@@ -84,8 +90,8 @@ export function IssueForm() {
 
   const { terms, parseError } = useMemo(() => toTerms(draft, now), [draft, now]);
   const errors = useMemo(
-    () => (terms ? validateTerms(terms, now) : []),
-    [terms, now],
+    () => (terms ? validateProposal(terms, documentHash, address, now) : []),
+    [terms, documentHash, address, now],
   );
   const schedule = useMemo(
     () => (terms && errors.length === 0 ? buildSchedule(terms, now) : null),
@@ -98,6 +104,46 @@ export function IssueForm() {
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
       <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+        <Field
+          label="Borrower"
+          hint="The counterparty who owes on this loan. Must be verified, and cannot be you."
+          error={errorFor(errors, "borrower")}
+        >
+          <input
+            className={inputCls}
+            placeholder="0x…"
+            spellCheck={false}
+            value={draft.borrower}
+            onChange={(e) => set("borrower", e.target.value)}
+          />
+        </Field>
+
+        <Field
+          label="Signed agreement"
+          hint={
+            documentName
+              ? `${documentName} · ${documentHash.slice(0, 10)}…${documentHash.slice(-6)}`
+              : "Hashed in your browser. The file is never uploaded here — only its hash reaches the chain."
+          }
+          error={errorFor(errors, "documentHash")}
+        >
+          <input
+            type="file"
+            className={`${inputCls} file:mr-3 file:rounded file:border-0 file:bg-black/5 file:px-2 file:py-1 file:text-xs dark:file:bg-white/10`}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) {
+                setDocumentHash(ZERO_HASH);
+                setDocumentName("");
+                return;
+              }
+              const bytes = new Uint8Array(await file.arrayBuffer());
+              setDocumentHash(keccak256(bytes));
+              setDocumentName(file.name);
+            }}
+          />
+        </Field>
+
         <Field
           label="Principal"
           hint="Target raise, in USDC."
@@ -217,15 +263,17 @@ export function IssueForm() {
         <button
           type="submit"
           disabled
-          title="IssuerRegistry and NoteFactory are not deployed yet"
+          title="PartyRegistry and IssuanceQueue are not deployed yet"
           className="w-full rounded border border-current px-4 py-2 text-sm font-medium opacity-40"
         >
-          {blocked ? "Fix the errors above" : "Mint note"}
+          {blocked ? "Fix the errors above" : "Propose note"}
         </button>
         <p className="text-xs opacity-60">
-          Minting is disabled until <code>IssuerRegistry</code> and{" "}
-          <code>NoteFactory</code> are deployed. The preview is live — it uses the
-          same schedule maths the contract will.
+          Proposing is disabled until <code>PartyRegistry</code> and{" "}
+          <code>IssuanceQueue</code> are deployed. The preview is live — it uses
+          the same schedule maths the contract will. Nothing mints here: a
+          proposal still needs the borrower to accept and an admin to approve
+          the agreement.
         </p>
       </form>
 
@@ -284,7 +332,7 @@ export function IssueForm() {
         )}
         {!isConnected ? (
           <p className="text-xs opacity-60">
-            Connect a wallet to mint. The preview works without one.
+            Connect a wallet to propose. The preview works without one.
           </p>
         ) : null}
       </section>

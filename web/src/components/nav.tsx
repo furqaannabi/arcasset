@@ -3,7 +3,7 @@ import { ConnectButton } from "./connect-button";
 import { CHAIN } from "@/lib/chain";
 
 const LINKS = [
-  { href: "/issue", label: "Issue" },
+  { href: "/propose", label: "Propose" },
   { href: "/agent", label: "Agent" },
   { href: "/intel", label: "Intel" },
 ] as const;

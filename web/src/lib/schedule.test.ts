@@ -6,6 +6,7 @@ const ONE = 10n ** 18n;
 const DAY = 86_400;
 
 const base: Terms = {
+  borrower: "0x00000000000000000000000000000000000000bb",
   principal: 100_000n * ONE,
   minPrincipal: 50_000n * ONE,
   couponBps: 100, // 1% per period

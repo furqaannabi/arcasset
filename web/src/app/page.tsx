@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const SCREENS = [
-  { href: "/issue", title: "Issue a note", body: "Verify as a human, set terms, mint. Gated on Selfie Check." },
+  { href: "/propose", title: "Propose a note", body: "Set terms, name a borrower, attach the agreement. Accepted, then approved, then minted." },
   { href: "/agent", title: "Agent console", body: "The servicing agent's live decision log and health." },
   { href: "/intel", title: "Intelligence", body: "Buy repayment data per query, settled in USDC." },
 ] as const;

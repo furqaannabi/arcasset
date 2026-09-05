@@ -7,6 +7,7 @@
  */
 
 export type Terms = {
+  borrower: string; // the counterparty who owes; never the originator
   principal: bigint;
   minPrincipal: bigint;
   couponBps: number;
@@ -18,6 +19,9 @@ export type Terms = {
   cureWindow: number;
 };
 
+export const ZERO_HASH =
+  "0x0000000000000000000000000000000000000000000000000000000000000000";
+
 export const LIMITS = {
   MIN_PERIOD_LENGTH: 60, // one minute — see docs/02-contracts.md
   MIN_PERIOD_COUNT: 1,
@@ -25,7 +29,44 @@ export const LIMITS = {
   MAX_SERVICING_FEE_BPS: 500,
 } as const;
 
-export type FieldError = { field: keyof Terms; message: string };
+export type ProposalField = keyof Terms | "documentHash";
+export type FieldError = { field: ProposalField; message: string };
+
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * `originator` is the connected wallet and `documentHash` the keccak of the
+ * uploaded agreement. Both are checks IssuanceQueue.propose performs, so they
+ * live here with the rest rather than in the component.
+ */
+export function validateProposal(
+  terms: Terms,
+  documentHash: string,
+  originator: string | undefined,
+  now: number,
+): FieldError[] {
+  const errors = validateTerms(terms, now);
+
+  if (!ADDRESS.test(terms.borrower)) {
+    errors.push({ field: "borrower", message: "Not a valid address." });
+  } else if (originator && terms.borrower.toLowerCase() === originator.toLowerCase()) {
+    // The single rule that keeps the dataset honest: an originator cannot be
+    // their own borrower, or they could manufacture a spotless record.
+    errors.push({
+      field: "borrower",
+      message: "You cannot name yourself as borrower.",
+    });
+  }
+
+  if (!documentHash || documentHash === ZERO_HASH) {
+    errors.push({
+      field: "documentHash",
+      message: "Attach the signed agreement. Nothing mints without one.",
+    });
+  }
+
+  return errors;
+}
 
 export function validateTerms(terms: Terms, now: number): FieldError[] {
   const errors: FieldError[] = [];
@@ -84,6 +125,9 @@ export function validateTerms(terms: Terms, now: number): FieldError[] {
   return errors;
 }
 
-export function errorFor(errors: FieldError[], field: keyof Terms): string | undefined {
+export function errorFor(
+  errors: FieldError[],
+  field: ProposalField,
+): string | undefined {
   return errors.find((e) => e.field === field)?.message;
 }
