@@ -1,7 +1,7 @@
 import { keccak256, concat, type Hex } from "viem";
 
 /**
- * The manifest hash committed on-chain — see docs/09-backend.md.
+ * The manifest hash committed on-chain — see docs/05-backend.md.
  *
  *   manifestHash = keccak256( concat( sort(contentHash₁ … contentHashₙ) ) )
  *

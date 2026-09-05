@@ -45,7 +45,7 @@ docs/        Specs — read these before changing an interface
 - **Postgres holds documents, sessions and pre-chain drafts. Never note state.**
   If a value can be derived from the chain, the database does not store it. A
   `notes` table would make one query easier and give us a second source of truth
-  that drifts — see `docs/09-backend.md`.
+  that drifts — see `docs/05-backend.md`.
 - Secrets live in `.env` (gitignored). Nothing keyed or seeded goes in a commit.
 
 ## Before changing an interface

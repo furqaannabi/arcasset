@@ -2,8 +2,14 @@
 
 **Status: Spec**
 
-Bun + Hono. One long-running process. Reads the subgraph, writes through
-`ServicingRelay`. Keeps no authoritative state of its own.
+Bun + Hono. Reads the subgraph, writes through `ServicingRelay`. Keeps no
+authoritative state of its own.
+
+It shares a process with the HTTP routers in [05 — Backend](05-backend.md), and
+that process has a database — but the agent does not use it. Not for what it has
+done, not for what it intends to do. Every decision is re-derived from the
+subgraph on every tick, which is what makes a restarted agent identical to one
+that never stopped.
 
 ## Decision loop
 

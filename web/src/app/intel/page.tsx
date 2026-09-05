@@ -14,7 +14,7 @@ export default function IntelPage() {
       </header>
       <EmptyState
         title="Not built yet"
-        hint="Endpoint cards and the 402-then-pay query builder — see docs/05-intel-api.md. Due Sep 11."
+        hint="Endpoint cards and the 402-then-pay query builder — see docs/05-backend.md. Due Sep 11."
       />
     </div>
   );

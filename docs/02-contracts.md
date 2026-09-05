@@ -162,7 +162,7 @@ admin can read the contents.
 - `documentHash != 0` — else `NoDocument()`. It is a manifest hash over *all*
   the agreement documents, not one file: `keccak256` of every document's content
   hash, sorted ascending and concatenated. Construction and the reasoning behind
-  it are in [09 — Backend](09-backend.md#the-manifest-hash); the contract only
+  it are in [05 — Backend](05-backend.md#the-manifest-hash); the contract only
   ever sees the root.
 - `acceptDeadline > block.timestamp`.
 - `periodCount >= 1`, `periodLength >= 1 minutes`, `principal > 0`,
@@ -444,7 +444,7 @@ event MarkedDelinquent(
 event Defaulted(uint256 indexed noteId, uint16 periodsMissed, uint64 timestamp);
 ```
 
-**Guards — every one of these is a test**
+### Guards — every one of these is a test
 
 | Call | Reverts when |
 |---|---|

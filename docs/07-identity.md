@@ -33,7 +33,7 @@ it is what makes the dataset mean anything.
   We must not describe it as KYC in the UI or the pitch; it would be false and it
   would set a legal expectation we do not meet.
 - **Not a credit signal.** Being verified says nothing about creditworthiness.
-  The score in [05](05-intel-api.md) comes from repayment behaviour alone.
+  The score in [05](05-backend.md) comes from repayment behaviour alone.
   Verification is table stakes for issuing, not a point in your favour.
 
 ## Flow

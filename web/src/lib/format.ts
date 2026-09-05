@@ -77,7 +77,7 @@ export function annualisedRate(couponBps: number, periodLengthSeconds: number): 
   return (couponBps / 10_000) * periodsPerYear;
 }
 
-/** Intel API sends rates as [0,1] floats — docs/05-intel-api.md. */
+/** Intel API sends rates as [0,1] floats — docs/05-backend.md. */
 export function formatRate(rate: number, places = 2): string {
   return `${(rate * 100).toFixed(places)}%`;
 }
