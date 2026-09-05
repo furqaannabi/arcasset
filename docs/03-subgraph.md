@@ -12,32 +12,82 @@ in handlers. A query that needs a full scan of `Repayment` to answer is a bug.
 ## Entities
 
 ```graphql
-type Issuer @entity {
+type Originator @entity {
   id: Bytes!                      # address
   verifiedAt: BigInt!
   nullifier: Bytes!
   revoked: Boolean!
   revokedAt: BigInt
 
-  notes: [Note!]! @derivedFrom(field: "issuer")
+  notes: [Note!]! @derivedFrom(field: "originator")
 
-  # maintained incrementally
-  notesIssued: Int!
+  # book quality — how well the loans this party originated actually perform
+  notesProposed: Int!
+  notesAccepted: Int!
+  notesMinted: Int!
+  proposalsRejected: Int!         # an admin read the agreement and said no
+  proposalsExpired: Int!          # the borrower never answered
   notesMatured: Int!
   notesDefaulted: Int!
   principalRaised: BigInt!
+  periodsSettled: Int!
+  periodsMissed: Int!
+  periodsCuredBySelf: Int!        # originator paid their own borrower's shortfall
+  lastActivityAt: BigInt!
+}
+
+type Borrower @entity {
+  id: Bytes!                      # address
+  verifiedAt: BigInt!
+  nullifier: Bytes!
+  revoked: Boolean!
+  revokedAt: BigInt
+
+  notes: [Note!]! @derivedFrom(field: "borrower")
+
+  # punctuality — how well this party actually pays
+  notesAccepted: Int!
+  notesMatured: Int!
+  notesDefaulted: Int!
+  principalOwed: BigInt!
   principalRepaid: BigInt!
   periodsSettled: Int!
   periodsMissed: Int!
   periodsCured: Int!
-  totalDaysLate: BigInt!          # summed lateness across settled periods
+  totalDaysLate: BigInt!
   lastActivityAt: BigInt!
+}
+
+type Proposal @entity {
+  id: Bytes!                      # proposalId
+  originator: Originator!
+  borrower: Borrower!
+  documentHash: Bytes!
+  documentURI: String!
+  digest: Bytes!                  # keccak256(terms, documentHash) as approved
+  status: ProposalStatus!         # Proposed|Accepted|Approved|Minted|Rejected|Expired
+
+  proposedAt: BigInt!
+  acceptedAt: BigInt
+  approvedAt: BigInt
+  approvedBy: Bytes
+  rejectedReason: String
+  note: Note                      # set once minted
+
+  principal: BigInt!
+  couponBps: Int!
+  periodCount: Int!
+  periodLength: BigInt!
+  acceptDeadline: BigInt!
 }
 
 type Note @entity {
   id: Bytes!                      # note contract address
   noteId: BigInt!
-  issuer: Issuer!
+  proposal: Proposal!
+  originator: Originator!
+  borrower: Borrower!
+  documentHash: Bytes!
   agent: Bytes                    # null until delegated
   metadataURI: String!
 
@@ -102,7 +152,8 @@ type Repayment @entity(immutable: true) {
   payer: Bytes!
   amount: BigInt!
   onTime: Boolean!
-  byThirdParty: Boolean!          # payer != issuer
+  byThirdParty: Boolean!          # payer != borrower
+  byOriginator: Boolean!          # payer == the note's originator
   timestamp: BigInt!
   txHash: Bytes!
 }
@@ -141,25 +192,30 @@ type ProtocolDay @entity {
 ```
 
 Enums mirror the contract enums exactly — `NoteStatus`, `PeriodStatus`,
-`ActionKind`. If a contract enum gains a variant, this file changes in the same
+`ProposalStatus`, `ActionKind`. If a contract enum gains a variant, this file changes in the same
 commit.
 
 ## Handlers
 
 | Source | Event | Effect |
 |---|---|---|
-| IssuerRegistry | `IssuerVerified` | create `Issuer` |
-| | `IssuerRevoked` | set `revoked` |
-| NoteFactory | `NoteIssued` | create `Note`, create `periodCount` `Period` rows as `Pending`, bump `Issuer.notesIssued`, template-index the new note |
-| RWANote | `Funded` | upsert `Position`, bump `Note.raised` |
-| | `FundingClosed` | set `status`, `activatedAt`; backfill `Period.start/end`; bump `Issuer.principalRaised` |
+| PartyRegistry | `PartyVerified` | create `Originator` **and** `Borrower` rows for the address — the same human may do both, on different notes, and we do not know which at verification time |
+| | `PartyRevoked` | set `revoked` on both |
+| IssuanceQueue | `Proposed` | create `Proposal`, bump `Originator.notesProposed` |
+| | `Accepted` | set `acceptedAt`, status `Accepted`, bump both parties' accepted counters |
+| | `Approved` | set `approvedAt`/`approvedBy`, status `Approved` |
+| | `Rejected` | set `rejectedReason`, status `Rejected`, bump `Originator.proposalsRejected` |
+| | `Expired` | status `Expired`, bump `Originator.proposalsExpired` |
+| NoteFactory | `NoteIssued` | create `Note`, create `periodCount` `Period` rows as `Pending`, bump `Originator.notesIssued`, template-index the new note |
+| | `Funded` | upsert `Position`, bump `Note.raised` |
+| | `FundingClosed` | set `status`, `activatedAt`; backfill `Period.start/end`; bump `Originator.principalRaised` |
 | | `Refunded` | bump `Position.refunded` |
 | | `Claimed` | bump `Position.claimed` |
-| | `StatusChanged` | set `Note.status`; on terminal set `closedAt`, bump issuer matured/defaulted counters |
-| RepaymentVault | `Repaid` | create `Repayment`, bump `Period.paid` / `Note.totalRepaid` / `Issuer.principalRepaid`, set `byThirdParty` |
+| | `StatusChanged` | set `Note.status`; on terminal set `closedAt`, bump matured/defaulted counters on both parties |
+| RepaymentVault | `Repaid` | create `Repayment`, bump `Period.paid` / `Note.totalRepaid` / `Originator.principalRepaid`, set `byThirdParty` |
 | ServicingRelay | `DelegationSet` | set `Note.agent`, upsert `Agent` |
 | | `DelegationRevoked` | null `Note.agent` |
-| | `PeriodSettled` | `Period.status = Settled`, set `settledAt`, `latenessSeconds`, `distributed`, `servicingFee`; bump note/issuer/agent counters; create `ServicingAction` |
+| | `PeriodSettled` | `Period.status = Settled`, set `settledAt`, `latenessSeconds`, `distributed`, `servicingFee`; bump note/borrower/originator/agent counters; create `ServicingAction` |
 | | `MarkedDelinquent` | `Period.status = Missed`, bump missed counters, create `ServicingAction` |
 | | `Defaulted` | create `ServicingAction` |
 
@@ -173,7 +229,7 @@ the whole punctuality product is built on; keep the definition here and nowhere
 else.
 
 **Cure detection:** a `Repaid` on a period already `Missed` sets it to `Cured`
-and bumps `Issuer.periodsCured`. A cured period counts as both missed and cured
+and bumps `Originator.periodsCured`. A cured period counts as both missed and cured
 — never silently un-count a miss, or the reputation data lies.
 
 ## Query contract
@@ -199,8 +255,13 @@ query DueNotes($now: BigInt!, $cursor: Bytes!) {
 }
 ```
 
-**Intel — issuer scorecard.** Everything needed for `/intel/issuer/:address` in
-one round trip; all fields are precomputed counters, no scanning.
+**Intel — party scorecards.** Two shapes, not one: `/intel/borrower/:address`
+reads the `Borrower` row, `/intel/originator/:address` reads the `Originator`
+row. Both are precomputed counters in a single round trip, no scanning.
+
+Keeping them apart is the whole reason the three-party model is worth its
+complexity. Punctuality and book quality are different questions with different
+buyers, and a single blended "issuer score" would answer neither.
 
 **Intel — cohort curve.** `ProtocolDay` range plus note-level status counts,
 bucketed by the API rather than the subgraph.

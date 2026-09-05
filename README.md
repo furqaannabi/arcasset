@@ -2,7 +2,7 @@
 
 **An agent that services tokenized private credit, and sells the record of having done it.**
 
-A verified-human issuer mints a note with a principal, a coupon and a period schedule; lenders fund it in native USDC on Arc; and from then on nobody touches it. An autonomous agent advances each period, marks missed payments delinquent, distributes coupons pro-rata, and takes a servicing fee out of each repayment it processes. Every judgement it makes lands on-chain, and the record of those judgements is sold per query.
+A verified originator proposes a note against a loan they have already made, naming a verified borrower who must accept it from their own key and attaching the agreement behind it; an admin reads that agreement and approves; only then is anything minted. Lenders fund it in native USDC on Arc, and from then on nobody touches it. An autonomous agent advances each period, marks missed payments delinquent, distributes coupons pro-rata, and takes a servicing fee out of each repayment it processes. Every judgement it makes lands on-chain, and the record of those judgements is sold per query.
 
 Built from scratch at ETHOnline 2026 (Sep 4–13) by Furqaan and Apurva.
 
@@ -32,14 +32,20 @@ Sybil issuance makes all three worse. An anonymous issuer can abandon a defaulte
 ## How it works
 
 ```text
-Issuer passes Selfie Check          → IssuerRegistry records the nullifier
+Originator and borrower verify      → PartyRegistry records a nullifier each
         ↓
-Issuer mints a note                 → NoteFactory deploys it, status Funding
+Originator proposes terms + agreement → IssuanceQueue: Proposed
         ↓
-Lenders fund it in native USDC      → principal released, status Active
+Borrower accepts from their own key → Accepted
+        ↓                               (no answer by the deadline → Expired)
+Admin reads the agreement, approves → Approved  (or Rejected, with a reason)
+        ↓
+Originator mints, digest re-checked → NoteFactory deploys it, status Funding
+        ↓
+Lenders fund it in native USDC      → proceeds to the originator, status Active
         ↓
    ┌──────────────────── per period, unattended ────────────────────┐
-   │  Issuer repays into RepaymentVault                             │
+   │  Borrower repays into RepaymentVault                           │
    │  Agent reads the subgraph and classifies the period            │
    │    paid in full          → settle, distribute, take the fee    │
    │    short, inside grace   → wait                                │
@@ -51,16 +57,24 @@ Lenders fund it in native USDC      → principal released, status Active
 Final period settled                → Matured   (or Defaulted)
 ```
 
-### Four parties, kept apart
+### Five parties, kept apart
 
 | | |
 |---|---|
-| **Issuer** | Borrows. Must pass Selfie Check before minting. Sets the terms, receives the principal, repays each period |
+| **Originator** | Already lent the money. Proposes the note, names the borrower, attaches the agreement, mints once approved, receives the proceeds, delegates servicing. Verified; cannot name themselves |
+| **Borrower** | Owes the money. Must be verified, and must accept from their own key before an admin will even look at it. Repays each period |
+| **Admin** | Reads the agreement and approves or rejects. Can only block — cannot alter terms, mint, accept for anyone, or touch a single balance |
 | **Lender** | Funds notes and claims coupons and principal pro-rata. Permissionless — no verification, no gate |
-| **Servicing agent** | Holds an on-chain delegation from the issuer. Advances periods and marks delinquency. Never custodies a cent |
+| **Servicing agent** | Holds an on-chain delegation from the originator. Advances periods and marks delinquency. Never custodies a cent |
 | **Intel buyer** | Pays per query for the repayment record. No account, no key — the payment is the auth |
 
-Repayment is deliberately open to anyone. A guarantor or a third party may legitimately cure a missed period, and restricting it to the issuer's address would let a lost key strand a performing loan. The vault records who actually paid, and that turns out to be a signal worth selling: an issuer whose misses are cured by somebody else is a different risk from one who cures their own.
+**The originator and the borrower are different people, and that is the load-bearing choice.** In private credit the originator has already lent the money; tokenizing the receivable is how they get capital back early. Collapse the two roles and you have crowdfunded borrowing — but worse, you destroy the thing being sold. If the party selling the exposure is also the party whose repayment record is on offer, they can mint against an address they control, pay themselves punctually, and manufacture a spotless history.
+
+So both parties are separately verified, a note may not name its own originator as borrower, and the borrower must accept from their own key before anything proceeds. One nullifier per address means two verified addresses are two humans, which is what turns that rule into a real constraint rather than a formality.
+
+The third gate is a human. An admin reads the underlying agreement before a mint is allowed, because whether a document exists and says what the terms claim is not a question a signature can answer. What they approve is a digest over the exact terms and the document hash, and the mint recomputes it — so approving a modest loan and minting a predatory one fails rather than succeeding quietly. This is real centralisation and the honest framing is not that the key is trustworthy but that its power is confined to refusing: it cannot alter terms, mint, accept for a borrower, or reach any outstanding note.
+
+Repayment is deliberately open to anyone. A guarantor or a third party may legitimately cure a missed period, and restricting it to the issuer's address would let a lost key strand a performing loan. The vault records who actually paid, and that turns out to be the most valuable field in the dataset: a borrower whose misses are quietly cured by the originator that sold the exposure is not a performing borrower, and the buyer of that exposure is otherwise the last to find out.
 
 ### What the agent is trusted with, and what it is not
 
@@ -102,8 +116,10 @@ No layer is trusted alone.
 
 | Layer | What it establishes |
 |---|---|
-| Selfie Check | A live human, once, per issuing address. The nullifier is the anchor everything else hangs from |
-| Registry gate | Only a verified address can mint. Lending stays open to anyone |
+| Selfie Check | A live human, once, per address. Two verified addresses are necessarily two humans — that is what the whole model rests on |
+| Registry gate | Both write-side roles verified: originator and borrower. Lending stays open to anyone |
+| Borrower acceptance | The named borrower agreed, from their own key, before any reviewer spends time on it |
+| Admin approval | A human read the agreement and matched it to the terms. Approve or reject only; the approved digest is the minted digest |
 | On-chain delegation | An agent services a note only while the issuer says it may, and revocation takes effect immediately |
 | Narrow relay | The agent's reachable surface is three functions, none of which can direct funds |
 | Contract invariants | Claims never exceed the vault balance; terminal notes never transition again; every guard is a named test |
@@ -116,16 +132,18 @@ No layer is trusted alone.
 - **Selfie Check is not KYC.** It proves a live human, not an identity. No name, no country, no document. Describing it as KYC would be false and would imply a legal standard we do not meet.
 - **A default is recorded, not enforced.** There is no collateral and no liquidation. The note is a claim on a contract, not on a court.
 - **There is no secondary market.** Notes are ERC-20 and transferable; we have not built an order book, and transferability is not liquidity.
+- **The admin is a single key we control.** New issuance stops if it is lost or hostile. Outstanding notes are untouched, and no reviewer decision can move money.
+- **Approval is not authentication of a document.** The chain records that an admin approved a file with a given hash. It cannot attest the file is genuine, says what the terms claim, or was read at all.
 - **Rented or coerced verification is unmitigated.** Selfie Check proves liveness, not consent. Saying so plainly is worth more than an overclaim that falls apart under one question.
 - **Small cohorts do not produce rates.** Any delinquency bucket with fewer than five notes returns `null` rather than a number, and the curve divides by the notes that actually reached each period rather than the original cohort size. Dividing by the original count would understate late-period delinquency, which is the kind of error that looks like data.
 
 ## Layout
 
 ```text
-contracts/   Foundry — IssuerRegistry, NoteFactory, RWANote, RepaymentVault, ServicingRelay
+contracts/   Foundry — PartyRegistry, IssuanceQueue, NoteFactory, RWANote, RepaymentVault, ServicingRelay
 backend/     Bun + Hono — the servicing agent and the paid /intel/* API, one process
 subgraph/    The Graph — notes, periods, repayments, delinquency, servicing actions
-web/         Next.js — issue, note detail, agent console, intelligence storefront
+web/         Next.js — propose, proposal review, note detail, agent console, intelligence storefront
 docs/        The specs. Read the relevant one before changing an interface
 ```
 
@@ -137,7 +155,8 @@ Nothing yet. Contracts are due Sep 6–7 and go to testnet Sep 10; addresses lan
 
 | Contract | Address |
 |---|---|
-| `IssuerRegistry` | Not deployed |
+| `PartyRegistry` | Not deployed |
+| `IssuanceQueue` | Not deployed |
 | `NoteFactory` | Not deployed |
 | `RepaymentVault` | Not deployed |
 | `ServicingRelay` | Not deployed |

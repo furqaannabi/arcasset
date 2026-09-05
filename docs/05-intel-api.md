@@ -43,18 +43,18 @@ Everything is keyed on the paying address. No accounts, no API keys, no signup.
 
 ## Endpoints
 
-### `GET /intel/issuer/:address`
+### `GET /intel/borrower/:address`
 
-Repayment behaviour for one issuer. **$0.50**
+Repayment behaviour for one borrower — does this counterparty pay on time. **$0.50**
 
 ```json
 {
-  "issuer": "0x…",
+  "borrower": "0x…",
   "verifiedAt": 1757030400,
-  "notesIssued": 7,
+  "notesAccepted": 7,
   "notesMatured": 4,
   "notesDefaulted": 0,
-  "principalRaised": "450000000000000000000000",
+  "principalOwed": "450000000000000000000000",
   "principalRepaid": "310000000000000000000000",
   "periods": { "settled": 41, "missed": 3, "cured": 3 },
   "punctuality": {
@@ -70,10 +70,47 @@ Repayment behaviour for one issuer. **$0.50**
 }
 ```
 
-`thirdPartyCures` is deliberately exposed: an issuer whose misses are cured by
-someone else is a different risk than one who cures their own. That distinction
-is the kind of thing only the servicer sees, and it is what makes this data worth
-paying for.
+`thirdPartyCures` is deliberately exposed, and split further by whether the payer
+was the note's own originator. A borrower whose misses are quietly cured by the
+party that sold the exposure is not a performing borrower — that is a subsidised
+one, and the buyer of that exposure is the last to find out. Only the servicer
+sees it, and it is the single most valuable field here.
+
+### `GET /intel/originator/:address`
+
+Book quality for one originator — do the loans this party writes perform.
+**$1.00**
+
+```json
+{
+  "originator": "0x…",
+  "notesProposed": 31,
+  "notesMinted": 24,
+  "proposalsExpired": 4,
+  "proposalsRejected": 3,
+  "principalRaised": "980000000000000000000000",
+  "book": {
+    "maturedRate": 0.6428,
+    "defaultRate": 0.0714,
+    "periodsMissed": 19,
+    "selfCuredPeriods": 11,
+    "selfCureRate": 0.5789
+  },
+  "asOfBlock": 8412551
+}
+```
+
+`proposalsExpired` counts proposals a named borrower simply never answered;
+`proposalsRejected` counts agreements an admin read and refused. Neither is
+neutral, and they mean different things — the first is counterparties declining
+to confirm this originator's claims about them, the second is a reviewer finding
+the paperwork wanting. An originator with a clean minted book and a long tail of
+either is telling you something their default rate is not.
+
+`selfCureRate` is the share of this originator's missed periods that the
+originator themselves paid. High values mean the headline default rate is being
+held down out of their own pocket, which is exactly what a buyer needs to price
+and exactly what a blended score would hide.
 
 ### `GET /intel/cohort?issuedAfter=&issuedBefore=&couponBpsMin=&couponBpsMax=`
 

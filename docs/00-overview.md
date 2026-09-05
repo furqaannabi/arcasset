@@ -23,16 +23,22 @@ addresses after a default, so repayment history has no anchor.
 
 ArcAsset is three things stacked:
 
-1. **A note primitive on Arc.** A verified-human issuer mints an `RWANote` with
-   a principal, a coupon rate, and a period schedule. Lenders fund it in native
-   USDC. Repayments land in a `RepaymentVault` and are claimable pro-rata.
+1. **A note primitive on Arc.** A verified originator proposes an `RWANote`
+   against a loan they have already made, naming a verified borrower and the
+   agreement behind it. The borrower accepts from their own key, an admin reads
+   the agreement and approves, and only then is anything minted. Lenders fund it
+   in native USDC; repayments land in a `RepaymentVault` and are claimable
+   pro-rata.
 2. **An autonomous servicing agent.** The agent reads the subgraph, and for every
    note it services it advances periods, marks missed payments delinquent,
    triggers distributions, and posts a servicing action on-chain. It is paid a
    servicing fee in basis points out of each repayment it processes.
-3. **An intelligence storefront.** Everything the agent learns — repayment
-   punctuality per issuer, cohort delinquency curves, cure rates — is sold
-   per-query over the `/intel/*` API, settled in USDC on Arc.
+3. **An intelligence storefront.** Everything the agent learns is sold per-query
+   over the `/intel/*` API, settled in USDC on Arc — and it separates into two
+   products, because the three-party structure creates two different questions.
+   *Borrower punctuality*: does this counterparty pay on time. *Originator book
+   quality*: do the loans this party writes actually perform. The second is the
+   one a capital allocator pays real money for.
 
 The third piece is the point. The agent's job produces a dataset as a byproduct,
 and the dataset is the durable asset.
@@ -41,23 +47,50 @@ and the dataset is the durable asset.
 
 | Actor | Does | Constraint |
 |---|---|---|
-| **Issuer** | Mints notes, repays each period | Must pass World Selfie Check before minting or delegating |
-| **Lender** | Funds notes, claims coupons and principal | Permissionless; no verification required to lend |
-| **Servicing agent** | Advances periods, marks delinquency, distributes | Must hold a servicing delegation from the issuer |
+| **Originator** | Already made the loan. Proposes terms and the agreement, mints once approved, receives the proceeds, delegates servicing | Must pass Selfie Check. Cannot name themselves as borrower |
+| **Borrower** | Owes the money. Accepts the proposal, then repays each period | Must pass Selfie Check, and must accept from their own key before an admin will look at it |
+| **Admin** | Reads the agreement and approves or rejects the proposal | Can only block. Cannot alter terms, mint, accept for anyone, or touch funds |
+| **Lender** | Funds notes, claims coupons and principal pro-rata | Permissionless; no verification required to lend |
+| **Servicing agent** | Advances periods, marks delinquency, distributes | Must hold a servicing delegation from the originator |
 | **Intel buyer** | Queries `/intel/*` | Pays per query in USDC; no account needed |
+
+### Why the originator and the borrower are different people
+
+This is the difference between private credit and a bond. In private credit the
+originator has **already lent the money**; tokenizing the receivable is how they
+get their capital back early. The borrower is a counterparty who owes on a loan
+that already exists.
+
+Collapsing the two — letting whoever mints also be whoever repays — turns the
+product into crowdfunded borrowing, and quietly destroys the data asset. If the
+party selling exposure is also the party whose repayment record is being sold,
+they can mint a note against an address they control, pay themselves on time,
+and manufacture a spotless history. So the borrower must be separately verified
+and must accept from their own key, a note may not name its own originator as
+borrower, and an admin must read the underlying agreement before anything is
+minted. The first two are cryptographic; the third is a human, because whether a
+document exists and says what the terms claim is not a question a signature can
+answer.
 
 ## The loop
 
 ```
-Issuer passes Selfie Check ──► IssuerRegistry.verify()
+Both parties pass Selfie Check ──► PartyRegistry.verify()
         │
-        ├─► NoteFactory.issue(terms) ──► RWANote deployed, status=Funding
+Originator proposes terms + agreement ──► IssuanceQueue: Proposed
         │
-Lenders fund ──► principal to issuer, status=Active
+Borrower accepts from their own key ────► Accepted
+        │   (deadline passes with no answer ──► Expired, by anyone)
+        │
+Admin reviews the agreement ────────────► Approved   (or Rejected, with a reason)
+        │
+Originator mints ──► digest re-checked ──► RWANote deployed, status=Funding
+        │
+Lenders fund ──► proceeds to originator, status=Active
         │
         ▼
    ┌─────────────────────────── per period ───────────────────────────┐
-   │  Issuer repays ──► RepaymentVault                                │
+   │  Borrower repays ──► RepaymentVault                              │
    │  Agent observes via subgraph                                     │
    │    ├── on time   ──► ServicingRelay.settlePeriod()               │
    │    └── past grace ──► ServicingRelay.markDelinquent()            │
@@ -79,13 +112,16 @@ Lenders fund ──► principal to issuer, status=Active
   subgraph is the read layer for the UI and the source for the paid API. One
   index, three consumers.
 - **World** — repayment history is worthless without an identity anchor. Selfie
-  Check gates *issuance*, not lending, so a defaulting issuer cannot cheaply
-  reappear as a fresh address. It gates the write side of reputation only.
+  Check gates both write-side roles — origination and borrowing — while lending
+  stays open to anyone. One nullifier per address means two verified addresses
+  are two humans, which is exactly what stops an originator inventing a borrower
+  to fabricate a record. It gates the write side of reputation only.
 
 ## Scope
 
-**In scope (build):** single-tranche fixed-coupon notes, USDC-only, one servicing
-agent operated by us, three intel endpoints, four web screens.
+**In scope (build):** single-tranche fixed-coupon notes, USDC-only, a
+propose → accept → approve → mint issuance lifecycle, one servicing agent operated by us,
+intel endpoints for both party types, five web screens.
 
 **Non-goals (cut, say so out loud in the demo):**
 
@@ -93,6 +129,14 @@ agent operated by us, three intel endpoints, four web screens.
   order book or AMM in scope.
 - Multi-tranche or waterfall structures.
 - Real legal wrappers. The note is a claim on a smart contract, not on a court.
+  On-chain acceptance records that the borrower agreed; it does not make the
+  underlying loan enforceable anywhere.
+- Automated document reading. The admin reviews the agreement themselves; we do
+  not extract or parse it. The chain records the hash and who approved it.
+- A decentralised approver set. One admin key, and we say so.
+- A primary sale desk. The originator does not hold supply and sell it down;
+  lenders fund the note directly and the proceeds go to the originator. Same
+  economics, one less contract.
 - Multi-currency. USDC only.
 - Decentralised agent market. One agent, our keys, delegation is on-chain so it
   is *replaceable* in principle — that's the story, not a shipped feature.

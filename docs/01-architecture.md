@@ -5,42 +5,50 @@
 ## Components
 
 ```
-                        ┌──────────────────┐
-                        │  World App       │
-                        │  Selfie Check    │
-                        └────────┬─────────┘
-                                 │ proof
-                                 ▼
-  ┌──────────┐            ┌──────────────┐
-  │ Issuer   │───mint────►│ NoteFactory  │──deploys──►┌───────────┐
-  └──────────┘            └──────────────┘            │ RWANote   │
-       │                         ▲                    │ (ERC-20)  │
-       │ repay                   │ gate               └─────┬─────┘
-       ▼                         │                          │
-  ┌──────────────────┐    ┌──────────────┐                  │
-  │ RepaymentVault   │    │IssuerRegistry│                  │
-  └────────┬─────────┘    └──────────────┘                  │
-           │ claim                                          │
-           ▼                                                │
-  ┌──────────┐                                              │
-  │ Lender   │◄─────────────────────────────────────────────┘
-  └──────────┘
-           ▲
-           │  settlePeriod / markDelinquent
-  ┌────────┴─────────┐
-  │ ServicingRelay   │◄──── writes ──── ┌────────────────┐
-  └──────────────────┘                  │ Servicing agent│
-                                        │  (Bun + Hono)  │
-  all contracts ──emit events──►        └───────┬────────┘
-  ┌──────────────┐                              │ reads
-  │  Subgraph    │◄─────────────────────────────┘
-  │ (The Graph)  │────► web UI
-  └──────┬───────┘
-         │ aggregates
-         ▼
-  ┌──────────────┐         pay per query (USDC on Arc)
-  │  /intel/*    │◄──────────────────────────── Intel buyer
-  └──────────────┘
+                    ┌──────────────────┐
+                    │  World App       │
+                    │  Selfie Check    │
+                    └────────┬─────────┘
+                             │ proof
+                             ▼
+                    ┌──────────────────┐
+                    │  PartyRegistry   │  originator + borrower
+                    └────────┬─────────┘
+                             │ gate
+  ┌────────────┐  propose    ▼
+  │ Originator │──────►┌──────────────────┐◄──accept()───┌──────────┐
+  └─────┬──────┘       │  IssuanceQueue   │              │ Borrower │
+        │              │  Proposed        │              └──────────┘
+        │              │   → Accepted     │
+        │              │   → Approved     │◄──approve/───┌──────────┐
+        │              └────────┬─────────┘   reject     │  Admin   │
+        │ mint (Approved only)  │                        └──────────┘
+        └──────────────────────►│
+                                ▼
+                       ┌──────────────────┐
+                       │   NoteFactory    │──deploys──►┌───────────┐
+                       └──────────────────┘            │  RWANote  │
+                                                       │  (ERC-20) │
+                                                       └─────┬─────┘
+  ┌──────────┐  repay   ┌──────────────────┐  claim           │
+  │ Borrower │─────────►│  RepaymentVault  │─────────►┌──────────┐
+  └──────────┘          └──────────────────┘          │  Lender  │
+                                 ▲                    └──────────┘
+                                 │ settle
+                       ┌──────────────────┐
+                       │  ServicingRelay  │◄─writes──┐
+                       └──────────────────┘          │
+                                                ┌─────────────────┐
+  all contracts ──emit events──►                │ Servicing agent │
+                       ┌──────────────────┐     │  (Bun + Hono)   │
+                       │    Subgraph      │◄────┤                 │
+                       │  (The Graph)     │reads└─────────────────┘
+                       └────────┬─────────┘
+                                ├──────► web UI
+                                ▼
+                       ┌──────────────────┐  pay per query (USDC on Arc)
+                       │    /intel/*      │◄──────────────── Intel buyer
+                       └──────────────────┘
 ```
 
 ## Data flow
@@ -62,8 +70,10 @@ read-through and never authoritative.
 
 | Boundary | What crosses | What we assume |
 |---|---|---|
-| World → IssuerRegistry | Selfie Check proof, verified on-chain | World's verifier contract is correct; we do not re-implement it |
-| Issuer → ServicingRelay | A delegation, scoped to one note | Issuer can revoke; revocation takes effect next period |
+| World → PartyRegistry | Selfie Check proof, verified on-chain | World's verifier contract is correct; we do not re-implement it |
+| Originator → ServicingRelay | A delegation, scoped to one note | Originator can revoke; revocation takes effect next period |
+| Borrower → IssuanceQueue | One `accept()` from their own key | Nobody can accept for them. Without it no admin looks at it and nothing mints |
+| Admin → IssuanceQueue | Approve or reject, nothing else | A hostile or lost admin key halts *new* issuance for everyone. It cannot alter terms, mint, accept for a borrower, or reach any outstanding note or vault balance |
 | Agent → ServicingRelay | Period settlement calls | Agent key is hot. Relay bounds what it can do — see below |
 | Subgraph → agent | Note and period state | Indexer may lag. Agent must tolerate lag, never assume freshness |
 | Buyer → /intel | Payment then query | Payment is verified on-chain before the response is served |

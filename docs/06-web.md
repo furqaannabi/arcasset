@@ -2,7 +2,7 @@
 
 **Status: Spec**
 
-Next.js App Router, wagmi + viem, TanStack Query against the subgraph. Four
+Next.js App Router, wagmi + viem, TanStack Query against the subgraph. Six
 screens. No design system beyond Tailwind; the demo is judged on the loop being
 legible, not on polish.
 
@@ -35,13 +35,17 @@ Shared pieces already in place, to build the screens on rather than around:
 
 ## Screens
 
-### `/issue` — Issue a note
+### `/propose` — Propose a note
 
-Gated on `IssuerRegistry.isVerified`. Unverified issuers see the Selfie Check
+Gated on `PartyRegistry.isVerified`. Unverified issuers see the Selfie Check
 step instead of the form — see [07 — Identity](07-identity.md).
 
-Form fields map 1:1 onto `Terms`. Two things the UI must do that the contract
-deliberately does not:
+Form fields map 1:1 onto `Terms`, including the **borrower address** — the note
+is minted against a counterparty, not against the person filling in the form.
+Validate that the borrower is verified and is not the connected wallet, and say
+which of the two failed; "invalid borrower" sends someone hunting.
+
+Three things the UI must do that the contract deliberately does not:
 
 - **Annualise the coupon for display.** `couponBps` is per period; show
   "1.00% per 30d period · ~12.7% APR" beside the input. Someone will type 1200
@@ -50,26 +54,64 @@ deliberately does not:
   amounts, rendered before signing. It is the last chance to catch a wrong
   `periodLength`.
 
-Submit → `NoteFactory.issue` → redirect to the note page using the CREATE2
-address, before the receipt lands.
+Also required: the **agreement document**. Upload it, hash it client-side, and
+show the hash — the borrower and the admin both check that the hash they are
+looking at is the hash of the file they read. Nothing mints without one.
+
+Submit → `IssuanceQueue.propose` → redirect to `/proposal/[id]`. Nothing is
+deployed yet; do not show a note address, because there isn't one.
 
 Funding and repayment are native value transfers, so there is **no approval
 step** — one transaction, not two. Do not build an allowance UI.
+
+### `/proposal/[id]` — Acceptance and review
+
+One screen, three audiences, and what it offers depends on who is connected. It
+exists to make a consequential signature legible, so it leads with what is being
+agreed to, not with a button.
+
+- Where in `Proposed → Accepted → Approved → Minted` this sits, and who is
+  being waited on. A proposal is a queue position; say whose turn it is.
+- Who is asserting this (originator address, their book record if any).
+- The agreement: a link to the document and its hash, shown, not hidden behind
+  a tooltip. Both the borrower and the admin are being asked to vouch for a
+  specific file.
+- The full obligation: principal, every period, total repayable, maturity.
+- The deadline, absolute and relative. Past it, the note is dead and the page
+  says so rather than offering a button that will revert.
+- One primary action, `accept()`, and an equally prominent explanation that
+  doing nothing is a valid choice with a known outcome — the note cancels.
+
+**Borrower**, while `Proposed`: `accept()`, plus an equally prominent note that
+doing nothing is a valid choice with a known outcome — past the deadline the
+proposal expires.
+
+**Admin**, and only once `Accepted`: approve, or reject with a reason that is
+written on-chain and shown to both parties. Before acceptance the admin controls
+are absent, not disabled — it is not their turn.
+
+**Anyone else**, and the borrower after accepting: read-only, with the state and
+whose action is outstanding. Do not hide it. A third party being able to read an
+unminted claim, and see that someone declined to accept it, is a feature.
 
 ### `/note/[address]` — Note detail
 
 The main screen. Sections:
 
-1. **Header** — status pill, principal, coupon, issuer with score badge
-   (links to intel).
-2. **Funding** (status `Funding`) — progress toward `minPrincipal` and
+1. **Header** — status pill, principal, coupon, and *both* parties: originator
+   with their book badge, borrower with their punctuality badge. Two badges,
+   two different questions; never blend them into one score.
+2. **Provenance** — the proposal this note came from: the document hash, who
+   approved it and when. A note's legitimacy is a chain of three signatures, and
+   this is where a lender checks it rather than taking it on trust.
+3. **Funding** (status `Funding`) — progress toward `minPrincipal` and
    `principal`, deadline countdown, fund input. Show the countdown in absolute
    time too; relative-only timers lie across timezones.
-3. **Schedule** — every period as a row: dates, due, paid, status, lateness.
+4. **Schedule** — every period as a row: dates, due, paid, status, lateness.
    The current period is highlighted. This table is the product.
-4. **Your position** (connected lender) — funded, claimed, claimable, claim
+5. **Your position** (connected lender) — funded, claimed, claimable, claim
    button.
-5. **Servicing log** — reverse-chronological `ServicingAction` list with tx
+6. **Servicing log** — reverse-chronological `ServicingAction` list with tx
    links. Shows the agent doing its job.
 
 ### `/agent` — Agent console

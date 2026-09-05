@@ -2,7 +2,8 @@
 
 **Status: Spec**
 
-World Selfie Check gates issuance. Nothing else.
+World Selfie Check gates both write-side roles — originating and borrowing.
+Lending stays open to anyone.
 
 ## What it is for
 
@@ -13,13 +14,20 @@ product is worthless, because past behaviour predicts nothing about a
 one-transaction-old address.
 
 Selfie Check gives us a proof of live human, reducible to a nullifier that is
-unique per person per app. One human, one issuing identity.
+unique per person per app. One human, one on-chain identity.
+
+Because a nullifier maps to exactly one address and an address to exactly one
+nullifier, **two distinct verified addresses are necessarily two distinct
+humans.** That property is doing more work here than anywhere else in the
+system: it is what stops an originator from minting a note against an address
+they control, accepting it themselves, paying themselves on time, and selling
+the resulting spotless record. Verification of the borrower is not politeness —
+it is what makes the dataset mean anything.
 
 ## What it is deliberately **not** for
 
 - **Not for lenders.** Lending is permissionless. Adding friction to the capital
-  side to solve a problem on the issuance side would be a straightforward
-  mistake.
+  side to solve a problem on the write side would be a straightforward mistake.
 - **Not KYC.** We learn nothing about who the person is — no name, no country, no
   document. It answers "a live human, not seen before here" and nothing more.
   We must not describe it as KYC in the UI or the pitch; it would be false and it
@@ -31,13 +39,15 @@ unique per person per app. One human, one issuing identity.
 ## Flow
 
 ```
-1. Issuer connects wallet, visits /issue.
+1. Party connects wallet, visits /propose (originator) or a proposal link
+   (borrower).
 2. isVerified(address) == false → show the verification step.
 3. World Selfie Check runs (World App / IDKit).
-4. Proof returned to the client, submitted to IssuerRegistry.verify(issuer, proof).
+4. Proof returned to the client, submitted to PartyRegistry.verify(party, proof).
 5. Registry validates the proof against World's verifier and checks the
    nullifier is unused.
-6. IssuerVerified emitted → subgraph creates the Issuer → /issue unlocks.
+6. PartyVerified emitted → subgraph records the party → proposing and
+   accepting unlock.
 ```
 
 Verification is one on-chain transaction, paid by the issuer. It happens once.
@@ -61,6 +71,8 @@ The nullifier is the whole mechanism. Rules:
 | Attack | Defence | Residual risk |
 |---|---|---|
 | Sybil issuers, many addresses | One nullifier per address, no reassignment | Real; buying verified accounts |
+| Originator invents a borrower to fabricate a clean record | Borrower must be separately verified, must accept from their own key, and cannot be the originator | A colluding pair of real humans can still do this. Unmitigated, and worth saying |
+| Originator quietly pays their borrower's misses to flatter the book | Not prevented — it is legitimate. Instead it is *measured*: the vault records the payer, and `selfCureRate` is published | None; disclosure is the defence |
 | Default then re-issue clean | Nullifier persists across notes; history follows the issuer | An issuer can still stop using the address, but cannot get a *clean* one |
 | Rented or coerced verification | Out of scope. Selfie Check proves liveness, not consent | Real and unmitigated. Say so |
 | Verified issuer turns malicious | `revoke()` blocks new issuance | Outstanding notes unaffected by design |
@@ -83,11 +95,26 @@ overclaim a judge can puncture in one question.
 
 There is no un-revoke in scope.
 
+## The admin is not an identity layer
+
+Proposal approval sits next to verification in the flow, so it is worth being
+explicit that they answer different questions and neither substitutes for the
+other. Selfie Check establishes that a human is behind an address. The admin
+establishes that an agreement was read and matched the terms. A verified party
+can still propose a fraudulent document, and a genuine document can still come
+from an unverified stranger — which is why both gates exist and why neither is
+described as doing the other's job.
+
+The admin is one key we hold. That is centralisation, it is the weakest link in
+this design, and the honest mitigation is not that it is trustworthy but that
+its power is confined to *refusing*: it cannot alter terms, mint, accept for a
+borrower, or reach a single outstanding note.
+
 ## Failure cases
 
 | Case | Behaviour |
 |---|---|
 | Proof rejected on-chain | Show the revert reason; allow retry. Never fake success |
 | Nullifier already used | Explicit message: this human already has an issuing address here. No workaround offered |
-| User abandons verification | No state written; `/issue` stays locked |
-| World service unavailable | `/issue` shows verification unavailable, not an empty form |
+| User abandons verification | No state written; `/propose` stays locked |
+| World service unavailable | `/propose` shows verification unavailable, not an empty form |
