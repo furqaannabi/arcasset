@@ -22,7 +22,8 @@ Conventional Commits for the subject line: `feat:`, `fix:`, `chore:`, `docs:`,
 ## Layout
 
 ```
-contracts/   Foundry — IssuerRegistry, NoteFactory, RWANote, RepaymentVault, ServicingRelay
+contracts/   Foundry — PartyRegistry, IssuanceQueue, NoteFactory, RWANote,
+             Offering, RepaymentVault, ServicingRelay
 backend/     Bun + Hono · Prisma/Postgres · R2 — agent, documents, /intel/* API
 subgraph/    The Graph — notes, periods, repayments, delinquency, servicing actions
 web/         Next.js — issue, note detail, agent console, intelligence storefront

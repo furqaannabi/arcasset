@@ -1,0 +1,37 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+
+# Pinned, not inferred. An unpinned solc or EVM version means the toolchain
+# silently retargets under a contract that is already deployed.
+solc_version = "0.8.24"
+evm_version = "cancun"
+
+# Arc testnet (5042002) reports blobGasUsed, excessBlobGas and
+# parentBeaconBlockRoot on every block, so it is at least Cancun.
+# Re-check with `cast block latest` before changing this.
+
+bytecode_hash = "none"
+cbor_metadata = false
+
+optimizer = true
+optimizer_runs = 200
+
+# Money bugs are the ones that matter here; fail on anything the compiler
+# is unsure about rather than discovering it in a test.
+deny = "warnings"
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
+
+[profile.ci]
+verbosity = 3
+fuzz = {runs = 1024}
+
+[fuzz]
+runs = 256

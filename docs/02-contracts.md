@@ -71,9 +71,16 @@ flawless repayment record to sell. `NoteFactory` therefore only has to check
 that `borrower != msg.sender` and that both are verified; it does not need to
 reason about nullifiers itself.
 
-There is no role grant and no admin allowlist. Any verified human may originate
-and any verified human may borrow, because an admin gate would put us in the
-critical path of every mint and buys nothing the nullifier does not already buy.
+There is no role grant here. Any verified human may originate and any verified
+human may borrow — the registry answers "is this a distinct person", and nothing
+else. Gating *which* verified humans may take which role would put an admin in
+the critical path of every mint and buy nothing the nullifier does not already
+buy.
+
+That is a different question from document review, which does have an admin in
+the path — see [IssuanceQueue](#issuancequeue). The distinction is worth holding
+onto: personhood is decided by a proof, and whether an agreement says what the
+terms claim is decided by a human. Neither substitutes for the other.
 
 ## IssuanceQueue
 
