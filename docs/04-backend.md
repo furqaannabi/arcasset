@@ -203,6 +203,19 @@ decide(period, note, now) →
 Partial payment inside grace is `WAIT`, not `DELINQUENT`. An issuer who has paid
 80% with two days of grace left has not missed anything yet.
 
+### The agent decides on chain time, never wall time
+
+Every deadline it reasons about — period ends, grace, cure windows — is compared
+against `block.timestamp` by the contract that will judge the transaction. So
+the tick reads the latest block's timestamp and decides with that.
+
+On a live chain the two clocks agree closely enough that this looks like
+pedantry. They do not agree on a test chain whose time has been warped, which is
+exactly how the demo works and exactly where the bug was found: the agent sat
+logging *"funded, period ends at …"* for a period that had ended, because its
+own clock was hours behind Anvil's. Deciding with a different clock than the one
+that will judge you is wrong even when it usually works.
+
 ### Safety rails
 
 The agent is autonomous over a hot key. These are non-negotiable:

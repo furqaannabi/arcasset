@@ -17,6 +17,16 @@ export interface NoteSource {
   serviceable(agent: Address): Promise<ServiceableNote[]>;
   /** How far behind the source is, in blocks. Zero for a direct RPC read. */
   lagBlocks(): Promise<number>;
+  /**
+   * The chain's clock, not this machine's.
+   *
+   * Every deadline the agent reasons about is compared against
+   * block.timestamp by the contract, so deciding on wall time means deciding
+   * with a different clock than the one that will judge the transaction. They
+   * are close on a live chain and wildly apart on a warped test chain, which
+   * is exactly where the difference is easiest to miss.
+   */
+  chainTime(): Promise<number>;
 }
 
 export type ServiceableNote = {
@@ -36,6 +46,11 @@ export class RpcNoteSource implements NoteSource {
   /** Direct reads are always at head, by definition. */
   async lagBlocks(): Promise<number> {
     return 0;
+  }
+
+  async chainTime(): Promise<number> {
+    const block = await this.client.getBlock({ blockTag: "latest" });
+    return Number(block.timestamp);
   }
 
   async serviceable(agent: Address): Promise<ServiceableNote[]> {

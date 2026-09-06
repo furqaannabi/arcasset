@@ -30,6 +30,9 @@ class FakeSource implements NoteSource {
   async lagBlocks(): Promise<number> {
     return this.lag;
   }
+  async chainTime(): Promise<number> {
+    return NOW;
+  }
 }
 
 class FakeExecutor implements Executor {

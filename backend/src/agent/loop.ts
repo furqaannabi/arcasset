@@ -29,6 +29,8 @@ export type AgentConfig = {
 };
 
 export type LogLine = {
+  /** Set when a runner records the line; absent on a bare tick. */
+  at?: number;
   noteId: string;
   period: number | null;
   decision: Action;
@@ -52,7 +54,8 @@ export async function tick(
   source: NoteSource,
   executor: Executor,
   config: AgentConfig,
-  now: number = Math.floor(Date.now() / 1000),
+  /** Overridable for tests. Otherwise the chain's clock — never this machine's. */
+  nowOverride?: number,
 ): Promise<TickReport> {
   const report: TickReport = {
     skipped: null,
@@ -85,6 +88,7 @@ export async function tick(
     return report;
   }
 
+  const now = nowOverride ?? (await source.chainTime());
   const notes = await source.serviceable(config.agent);
   report.notesConsidered = notes.length;
 
