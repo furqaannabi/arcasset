@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ConnectButton } from "./connect-button";
+import { ThemeToggle } from "./theme-toggle";
 import { CHAIN } from "@/lib/chain";
 
 const LINKS = [
@@ -10,20 +11,27 @@ const LINKS = [
 
 export function Nav() {
   return (
-    <header className="border-b border-black/10 dark:border-white/15">
-      <nav className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4">
-        <Link href="/" className="font-semibold tracking-tight">
+    <header className="border-b border-line bg-canvas">
+      <nav className="mx-auto flex max-w-6xl items-center gap-8 px-6 py-3.5">
+        <Link href="/" className="font-mono text-sm tracking-tight text-ink">
           ArcAsset
         </Link>
-        <div className="flex gap-4 text-sm">
+
+        <div className="flex gap-5">
           {LINKS.map((l) => (
-            <Link key={l.href} href={l.href} className="opacity-70 hover:opacity-100">
+            <Link
+              key={l.href}
+              href={l.href}
+              className="font-mono text-xs tracking-wide text-muted transition-colors hover:text-ink"
+            >
               {l.label}
             </Link>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-3">
-          <span className="hidden text-xs opacity-50 sm:inline">{CHAIN.name}</span>
+
+        <div className="ml-auto flex items-center gap-4">
+          <span className="eyebrow hidden sm:inline">{CHAIN.name}</span>
+          <ThemeToggle />
           <ConnectButton />
         </div>
       </nav>

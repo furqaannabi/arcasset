@@ -13,16 +13,27 @@ export const metadata: Metadata = {
     "Autonomous agents that service tokenized private credit on Arc for verified-human issuers, and sell what they learn.",
 };
 
+/**
+ * Applies a stored theme choice before first paint. Without this the page
+ * renders in the OS theme and then snaps to the chosen one — the flash is
+ * worst for exactly the person who set the preference.
+ */
+const THEME_SCRIPT = `try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t)}catch(e){}`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col font-sans">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
+      <body className="flex min-h-full flex-col bg-canvas font-sans text-ink">
         <Providers>
           <Nav />
-          <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">{children}</main>
+          <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12">{children}</main>
         </Providers>
       </body>
     </html>
