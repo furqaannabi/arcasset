@@ -40,6 +40,33 @@ What the database legitimately holds is the stuff that has no on-chain
 representation and cannot have one: PDFs, who uploaded them, who is allowed to
 read them, and the draft a proposal existed as before it reached the chain.
 
+## Running Postgres
+
+`bun run db:up` brings up Postgres 17 via `docker-compose.yml` and waits for it
+to be genuinely accepting connections, not merely started — migrations run the
+moment compose reports healthy, so the healthcheck has to mean it.
+
+Two things in that file are deliberate:
+
+- **The compose project is named explicitly** (`name: arcasset`). Compose
+  otherwise derives it from the directory, so every project on a machine with a
+  `backend/` directory shares one namespace. Before that line existed, a
+  `compose up` here recreated a different project's postgres container. Volumes
+  survived; the container did not.
+- **The port is bound to `127.0.0.1`**, not the default all-interfaces. A
+  trust-everything dev database should not be reachable from the network the
+  laptop happens to be on.
+
+**Prisma is pinned to 7.10.0.** npm's `latest` tag for `prisma` currently points
+at `8.0.0-rc.13` — a release candidate with a rewritten CLI where `migrate dev`
+no longer exists — while the newest stable sits under `prev`. Installing "the
+latest" puts an RC in the critical path. Pin it, and say why, or someone will
+helpfully upgrade it.
+
+Prisma 7 also moved the connection URL out of `schema.prisma` into
+`prisma.config.ts`, and the client talks to Postgres through a driver adapter
+(`@prisma/adapter-pg`) rather than its own engine binary.
+
 ## Schema
 
 ```prisma

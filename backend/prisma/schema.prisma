@@ -1,0 +1,88 @@
+// Postgres holds documents, sessions and pre-chain drafts. Never note state.
+// If a value can be derived from the chain, it does not live here — a notes
+// table would make one query easier and hand us a second source of truth that
+// drifts. See docs/04-backend.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DraftStatus {
+  Drafting
+  Submitted
+  Abandoned
+}
+
+/// A proposal before it reaches the chain. `proposalId` is a join key to
+/// on-chain state, never a copy of it.
+model Draft {
+  id           String      @id @default(cuid())
+  originator   String
+  borrower     String
+  termsJson    Json
+  manifestHash String?
+  manifestKey  String?
+  proposalId   String?     @unique
+  chainTxHash  String?
+  status       DraftStatus @default(Drafting)
+  documents    Document[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([originator])
+  @@index([borrower])
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  draft       Draft    @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  draftId     String
+  filename    String
+  contentType String
+  byteSize    Int
+  /// keccak256 of the bytes the server received, never a client-supplied hash.
+  contentHash String
+  r2Key       String   @unique
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+
+  /// The same file twice is one document, matching the manifest's dedupe.
+  @@unique([draftId, contentHash])
+  @@index([draftId])
+}
+
+model Session {
+  token     String   @id
+  address   String
+  issuedAt  DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([address])
+}
+
+model Nonce {
+  value     String    @id
+  address   String
+  usedAt    DateTime?
+  expiresAt DateTime
+}
+
+/// An EIP-3009 nonce we have already honoured. Not a copy of the transaction —
+/// the chain says whether payment happened, this says whether we already served
+/// for it, which exists nowhere else. Lose this table and every past
+/// authorization becomes replayable.
+model SpentAuthorization {
+  nonce     String   @id
+  payer     String
+  payTo     String
+  amount    String
+  resource  String
+  txHash    String?
+  settledAt DateTime @default(now())
+
+  @@index([payer])
+}
