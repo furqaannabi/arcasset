@@ -13,6 +13,10 @@ evm_version = "cancun"
 # parentBeaconBlockRoot on every block, so it is at least Cancun.
 # Re-check with `cast block latest` before changing this.
 
+# Deploy scripts write deployments/<chainId>.json, which every other package
+# reads. Foundry blocks filesystem writes unless they are declared.
+fs_permissions = [{access = "read-write", path = "./deployments"}]
+
 bytecode_hash = "none"
 cbor_metadata = false
 

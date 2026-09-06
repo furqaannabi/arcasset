@@ -1,4 +1,9 @@
 out/
 cache/
 broadcast/**/dry-run/
+# Local Anvil run logs; real-network broadcasts stay tracked as a record.
+broadcast/*/31337/
 .env
+
+# Local Anvil deployments are regenerated on every run; real networks are tracked.
+deployments/31337.json
