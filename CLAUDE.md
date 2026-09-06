@@ -32,11 +32,18 @@ docs/        Specs — read these before changing an interface
 
 ## Conventions
 
-- **Money is `uint256` base units of native Arc USDC (18 decimals).** Settlement
-  is the chain's native asset, so value moves as `msg.value` and there is no
-  ERC-20 approve step. Never floats. Format only at the UI edge, via
-  `formatUsdc`. One USDC exceeds 2^53 at this precision — a `Number` anywhere in
-  a money path is a bug.
+- **Arc USDC is one balance with two representations. Know which you are in.**
+  Native (`msg.value`) is **18 decimals** and is what every contract uses.
+  The ERC-20 at `0x3600000000000000000000000000000000000000` is Circle's
+  FiatToken, **6 decimals**, and is what x402, wallets and explorers use.
+  `balanceOf` there is exactly the native balance / 1e12 — same money, two
+  scales. Mixing them is a factor of a trillion. Convert in one named place,
+  never inline.
+- **Money is `uint256` base units. Never floats.** Format only at the UI edge,
+  via `formatUsdc`. One USDC exceeds 2^53 at 18 decimals — a `Number` anywhere
+  in a money path is a bug.
+- The paid API speaks **x402**, not a bespoke payment flow. Settle before
+  serving, never the reverse — see `docs/04-backend.md`.
 - **Time is Unix seconds (`uint64`).** Periods are half-open `[start, end)`.
 - Contracts: Solidity 0.8.24, `forge fmt` before commit, custom errors over
   revert strings, checks-effects-interactions.

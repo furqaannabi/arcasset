@@ -138,6 +138,13 @@ Arc testnet, confirmed against the RPC rather than copied from a config:
 Explorer is `https://testnet.arcscan.app`. viem ships both chains as
 `arcTestnet` and `arc`, so we import them rather than hand-rolling a definition.
 
+Arc USDC is also exposed as a **Circle FiatToken ERC-20 at
+`0x3600000000000000000000000000000000000000`, at 6 decimals** — the same balance
+at a different scale (`balanceOf` = native / 1e12), with EIP-3009
+`transferWithAuthorization` live on it. The contracts use the native view; the
+paid API uses the ERC-20 view because that is what x402 signs against. Both are
+verified against testnet.
+
 **Both chains use USDC as the native currency, at 18 decimals.** Every amount in
 this system is therefore 18dp native base units, not 6dp ERC-20 USDC. The two
 are the same word for a twelve-order-of-magnitude difference, so nothing may

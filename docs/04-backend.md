@@ -93,23 +93,14 @@ model Nonce {
   expiresAt DateTime
 }
 
-model Quote {
-  id         String   @id                     // quoted to the buyer, echoed in calldata
-  endpoint   String                           // what was priced
-  params     Json
-  price      String                           // base units, as a string
+model SpentAuthorization {
+  nonce      String   @id                     // the EIP-3009 nonce; single use, forever
+  payer      String
   payTo      String
-  createdAt  DateTime @default(now())
-  expiresAt  DateTime
-}
-
-model SpentPayment {
-  txHash    String   @id                      // single use, forever
-  quoteId   String
-  payer     String
-  amount    String
-  creditted String?                           // overpayment carried to the next quote
-  spentAt   DateTime @default(now())
+  amount     String                           // 6dp base units, as a string
+  resource   String                           // what it bought
+  txHash     String?                          // set once settlement confirms
+  settledAt  DateTime @default(now())
 
   @@index([payer])
 }
@@ -120,13 +111,14 @@ enum DraftStatus { Drafting Submitted Abandoned }
 There is deliberately no `Proposal`, `Note` or `Period` model. `Draft.proposalId`
 is a join key to on-chain state, not a copy of it.
 
-`SpentPayment` deserves a word, because it looks like the exception to the rule
-above and is not. It stores a transaction hash as a *spent marker* — our record
-that this payment has already bought a response — not a copy of the transaction.
-The chain remains the authority on whether the payment happened; the database is
-the authority on whether we already honoured it, which is a fact about us that
-exists nowhere else. It must be durable: lose the table and every past payment
-becomes replayable.
+`SpentAuthorization` deserves a word, because it looks like the exception to the
+rule above and is not. It stores an EIP-3009 nonce as a *spent marker* — our
+record that this authorization has already bought a response — not a copy of the
+transaction. The chain remains the authority on whether the payment happened; the
+database is the authority on whether we already honoured it, which is a fact
+about us that exists nowhere else. It must be durable: lose the table and every
+past authorization becomes replayable, which is the idempotency rule the x402
+security study lists as SR5.
 
 ## Auth
 
@@ -350,34 +342,92 @@ payment and a receipt. Cheap settlement on Arc is what makes the second one
 viable at $0.50 a call — that is the whole reason this is on Arc and not a
 Stripe page.
 
+### x402, not a bespoke flow
+
+**Status: Spec — supersedes the hand-rolled quote/tx-hash flow.**
+
+x402 is an open standard for exactly this: a server answers `402` with machine
+readable payment requirements, the client pays, and the resource is served. It
+is Coinbase-originated, and Circle demonstrates it **on Arc testnet with USDC**,
+which is the chain and asset we already settle in. Building our own protocol
+next to a standard the sponsor is actively promoting would be a worse product
+and a worse pitch.
+
+The mechanics that matter:
+
+- The buyer **signs an EIP-3009 `transferWithAuthorization`** rather than
+  sending a transaction and telling us about it. One round trip instead of
+  three, no waiting on a receipt before the request can be retried, and no
+  window where the buyer has paid but not yet been served.
+- We **self-facilitate**. The protocol allows a third-party facilitator to
+  verify and settle; we do both ourselves, because outsourcing the step that
+  decides whether we get paid to a service we do not run is not a simplification
+  worth having at this size.
+- Headers are the standard ones: `PAYMENT-REQUIRED` on the 402, then
+  `PAYMENT-SIGNATURE` carrying a base64 `PaymentPayload` on the retry, and
+  `PAYMENT-RESPONSE` on the 200 with the settlement result. Scheme `exact`.
+
+**Prices are quoted in 6-decimal base units, not 18.** See
+[the two faces of Arc USDC](#the-two-faces-of-arc-usdc) — the ERC-20 view that
+EIP-3009 signs against uses 6 decimals, while `msg.value` in the contracts uses
+18. $0.50 is `500000` here and `500000000000000000` there. Getting this wrong is
+a factor of a trillion, in the direction of giving data away.
+
+### The two faces of Arc USDC
+
+Arc's USDC is one balance with two representations, and both are legitimate:
+
+| | Address | Decimals | Used by |
+|---|---|---|---|
+| Native | — (`msg.value`) | **18** | Every contract in `contracts/` |
+| ERC-20 | `0x3600000000000000000000000000000000000000` | **6** | x402, wallets, explorers |
+
+Verified on testnet: the ERC-20 at that address is Circle's `FiatTokenProxy`
+(`version()` returns `"2"`), and `balanceOf` returns exactly the native balance
+divided by 1e12 — same money, two scales. `transferWithAuthorization` is live on
+it, which is what makes x402 possible here at all.
+
+Conversions live in one place and are named. Nothing multiplies by `1e12`
+inline.
+
 ### Payment flow
 
 ```
 1. Buyer GETs the endpoint with no payment header.
-2. API responds 402 with a quote:
-     { "price": "500000000000000000", "asset": "native USDC", "chainId": …,
-       "payTo": "0x…", "quoteId": "q_…", "expiresAt": … }
-3. Buyer sends native USDC to payTo with quoteId in calldata (a plain value
-   transfer — no token approval), gets a tx hash.
-4. Buyer re-GETs with header:  X-Payment: <txHash>
-5. API verifies on-chain: confirmed, correct recipient, amount >= price,
-   quoteId matches, hash not already spent. Then serves the response.
+2. 402 + PAYMENT-REQUIRED: base64 PaymentRequirements
+     { scheme: "exact", network: "arc-testnet",
+       asset: "0x3600…0000", maxAmountRequired: "500000",
+       payTo: "0x…", resource: "/intel/borrower/0x…",
+       maxTimeoutSeconds: 300, nonce, description }
+3. Buyer signs an EIP-3009 authorization for exactly that amount and payTo.
+4. Buyer re-GETs with PAYMENT-SIGNATURE: base64 PaymentPayload.
+5. We verify the signature, then SETTLE on-chain, then serve — in that order.
+6. 200 + PAYMENT-RESPONSE carrying the settlement transaction hash.
 ```
 
-**Verification rules** — each one is a test:
+### What can go wrong, and what we do about it
 
-- Receipt must be confirmed. Pending is a 402, not a 200.
-- `to` must equal our payment address and `value` ≥ the quoted price. Because
-  settlement is native, this is one field on the receipt — no ERC-20 transfer
-  log to parse, and no risk of reading a spoofed `Transfer` event from an
-  unrelated token contract.
-- A tx hash is single-use. A replayed hash returns `409 payment_replayed`.
-  Spent hashes live in a persisted set; losing it would let buyers replay.
-- Quote expiry is 10 minutes. Late payment → `410 quote_expired`, funds are
-  credited to the buyer address for the next quote rather than kept.
-- Overpayment is credited, not refunded, and not silently pocketed.
+The first systematic study of deployed x402 facilitators found four live attack
+classes. Since we self-facilitate, every one of them is ours to prevent, and
+they are not hypothetical — they were found in production deployments.
 
-Everything is keyed on the paying address. No accounts, no API keys, no signup.
+| Attack | How it works | What we do |
+|---|---|---|
+| **Free shopping** | Server releases the resource before settlement actually confirms, or trusts a facilitator that reported success wrongly | Settle first, serve second. Never the other way round, and never on a signature alone — a valid signature is not a payment |
+| **Asset theft** | Weak validation of contract-signature semantics lets settlement be redirected | Only EOA signatures over EIP-3009 in the `exact` scheme. No ERC-6492, no contract-deployment path, no alternative settlement semantics |
+| **Service denial** | Attacker submits proofs that verify but fail to settle, burning our gas each time | Re-validate freshness and nonce immediately before submitting, not only at verify time. Reject authorizations whose validity window is nearly closed |
+| **Gas abuse** | Attacker forces expensive operations per request | One allow-listed call shape — `transferWithAuthorization` on one asset — and a hard gas ceiling per settlement |
+
+Two rules from that study we adopt verbatim because they are easy to get wrong:
+**report success only after confirmed on-chain execution**, and **enforce
+idempotency** so one authorization can never be settled twice. The second is
+what `SpentAuthorization` is for; the EIP-3009 nonce is the key, and it is
+written before the response is served.
+
+**Overpayment is not accepted.** The `exact` scheme means the authorization is
+for the quoted amount. An authorization for more is rejected rather than
+partially consumed — accepting it would mean holding a balance we owe someone,
+which is a liability the ledger has no place for.
 
 ### Endpoints
 
@@ -490,15 +540,21 @@ committing.
 
 ### Response conventions
 
-- All amounts are strings of native USDC base units (18 decimals). Never JSON
-  numbers — at 18 decimals even one whole USDC exceeds 2^53, so a JSON number
-  would be silently wrong, not merely imprecise.
+- All amounts are strings, never JSON numbers — at 18 decimals even one whole
+  USDC exceeds 2^53, so a number would be silently wrong rather than merely
+  imprecise.
+- **Amounts in the data are 18-decimal**, because they come from contract state
+  where value moves as `msg.value`. **Prices are 6-decimal**, because they are
+  quoted against the ERC-20 view that EIP-3009 signs. Same asset, two scales —
+  see [the two faces of Arc USDC](#the-two-faces-of-arc-usdc). Every response
+  states which it means in a `decimals` field rather than leaving the buyer to
+  infer it.
 - Rates are floats in `[0, 1]`, four decimals. Not percentages, not bps.
 - Every response carries `asOfBlock` from the subgraph's `_meta`. The buyer must
   be able to tell how fresh the data is and reproduce the query.
 - Errors: `{ "error": "code", "message": "human readable" }` with codes
-  `payment_required`, `payment_replayed`, `payment_insufficient`, `quote_expired`,
-  `not_found`, `cohort_too_small`, `upstream_lagging`.
+  `payment_required`, `payment_replayed`, `payment_invalid`, `settlement_failed`,
+  `authorization_expired`, `not_found`, `cohort_too_small`, `upstream_lagging`.
 
 ### Caching
 
@@ -532,7 +588,9 @@ system.
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Object storage |
 | `SESSION_SECRET` | Session token signing |
 | `ADMIN_ADDRESSES` | Comma-separated; who may approve |
-| `INTEL_PAY_TO` | Address quoted to buyers and checked on the receipt |
+| `INTEL_PAY_TO` | Address quoted to buyers and bound into the authorization |
+| `USDC_ERC20` | `0x3600000000000000000000000000000000000000` on Arc testnet |
+| `MAX_SETTLE_GAS` | Ceiling per settlement; bounds the gas-abuse surface |
 | `INTEL_PRICES` | Endpoint price list, base units. Served by `/intel/pricing` |
 | `SUBGRAPH_URL`, `RPC_URL` | The only read path, and the chain |
 | `AGENT_PRIVATE_KEY` | Signer for the servicing loop. `.env` only, never committed |
@@ -563,8 +621,9 @@ skip the tick and try again — so its table lives with it, under
 | Client hash ≠ server hash | 422 `hash_mismatch`, object discarded |
 | Seal with zero files | 422 — a proposal without an agreement cannot exist |
 | Draft sealed, then edited | Rejected. Sealing is final; the hash is already on its way to the chain |
-| Payment tx not yet confirmed | 402 with the same quote, not 200. Pending is not paid |
-| Payment hash already spent | 409 `payment_replayed`. Never serve twice on one payment |
-| Quote expired before payment landed | 410 `quote_expired`, amount credited to the payer's next quote rather than kept |
+| Signature valid but settlement not yet confirmed | 402, not 200. A signature is not a payment, and serving here is the "free shopping" attack |
+| Settlement reverted | 502 `settlement_failed`, nothing served, nonce not marked spent |
+| Authorization nonce already spent | 409 `payment_replayed`. Never serve twice on one authorization |
+| Authorization expired or nearly so | 402 `authorization_expired`. Re-validate the window immediately before submitting, not only at verify time, or an attacker burns our gas on transactions destined to revert |
 | Subgraph lagging behind the RPC head | 503 `upstream_lagging` with the lag in the body. Serving stale data silently is worse than serving nothing, because the buyer cannot tell |
-| `SpentPayment` write fails after serving | Serve, then log loudly. Failing the response after taking payment is the worse of the two, and the replay window is one request |
+| `SpentAuthorization` write fails | Refuse to serve. The write happens before the response, so a failure here means we have settled and not recorded it — serving anyway would leave a replayable nonce, and a buyer who paid can retry |
