@@ -1,0 +1,258 @@
+"""
+Mirrors docs/03-subgraph.md, corrected against the deployed contracts
+(contracts/src/*.sol) where the two had drifted — see the note at the top of
+that doc. Changing an event's shape here means changing the doc in the same
+commit.
+"""
+
+type Originator @entity(immutable: false) {
+  id: Bytes! # address
+  verifiedAt: BigInt!
+  nullifier: Bytes!
+  revoked: Boolean!
+  revokedAt: BigInt
+
+  notes: [Note!]! @derivedFrom(field: "originator")
+  proposals: [Proposal!]! @derivedFrom(field: "originator")
+
+  # book quality — how well the loans this party originated actually perform
+  notesProposed: Int!
+  notesAccepted: Int!
+  notesMinted: Int!
+  proposalsRejected: Int! # an admin read the agreement and said no
+  proposalsExpired: Int! # the borrower never answered, or the mint window lapsed
+  notesMatured: Int!
+  notesDefaulted: Int!
+  principalRaised: BigInt! # cumulative principal of notes minted
+  principalSold: BigInt! # cumulative proceeds from Offering sales
+  periodsSettled: Int!
+  periodsMissed: Int!
+  periodsCuredBySelf: Int! # originator paid their own borrower's shortfall
+  lastActivityAt: BigInt!
+}
+
+type Borrower @entity(immutable: false) {
+  id: Bytes! # address
+  verifiedAt: BigInt!
+  nullifier: Bytes!
+  revoked: Boolean!
+  revokedAt: BigInt
+
+  notes: [Note!]! @derivedFrom(field: "borrower")
+  proposals: [Proposal!]! @derivedFrom(field: "borrower")
+
+  # punctuality — how well this party actually pays
+  notesAccepted: Int!
+  notesMatured: Int!
+  notesDefaulted: Int!
+  principalOwed: BigInt!
+  principalRepaid: BigInt!
+  periodsSettled: Int!
+  periodsMissed: Int!
+  periodsCured: Int!
+  totalDaysLate: BigInt!
+  lastActivityAt: BigInt!
+}
+
+enum ProposalStatus {
+  Proposed
+  Accepted
+  Approved
+  Minted
+  Rejected
+  Expired
+}
+
+type Proposal @entity(immutable: false) {
+  id: Bytes! # proposalId, left-padded
+  proposalId: BigInt!
+  originator: Originator!
+  borrower: Borrower!
+  documentURI: String!
+  # keccak256(terms, documentHash) as proposed, then re-set as approved. The
+  # raw documentHash itself is never emitted — only this digest is — so it is
+  # not indexed here; a proposal page reads it with IssuanceQueue.proposalOf
+  # if it needs it. Once minted, Note.documentHash comes straight off
+  # NoteFactory.NoteIssued, no call needed.
+  digest: Bytes!
+  status: ProposalStatus!
+
+  # Full Terms are not indexed here. propose() never emits them (only the
+  # digest), so getting them into an entity needs a contract call decoding a
+  # nested struct — real cost and fragility for data that is one free view
+  # call away (IssuanceQueue.proposalOf) and is not "expensive to compute at
+  # query time," the bar in docs/03-subgraph.md for what belongs here. A
+  # single proposal page reading it directly is not the direct-RPC-read this
+  # repo's CLAUDE.md warns against — that rule protects data the subgraph
+  # already indexes. Once a note mints, NoteFactory.NoteIssued carries the
+  # same terms directly, no call needed — see Note below.
+  proposedAt: BigInt!
+  acceptedAt: BigInt
+  approvedAt: BigInt
+  approvedBy: Bytes
+  rejectedReason: String
+  note: Note # set once Minted
+
+  proposedTx: Bytes!
+}
+
+enum NoteStatus {
+  Active
+  Delinquent
+  Matured
+  Defaulted
+}
+
+"""
+Every event past NoteIssued (Offering, RepaymentVault, ServicingRelay) carries
+the numeric noteId, never the note's address. This is the reverse index so a
+handler can go from noteId to the Note entity without an eth_call.
+"""
+type NoteIndex @entity(immutable: false) {
+  id: ID! # noteId as a decimal string
+  note: Note!
+}
+
+type Note @entity(immutable: false) {
+  id: Bytes! # note contract address
+  noteId: BigInt!
+  proposal: Proposal!
+  originator: Originator!
+  borrower: Borrower!
+  documentHash: Bytes!
+  agent: Bytes # null until delegated
+
+  principal: BigInt!
+  couponBps: Int!
+  servicingFeeBps: Int!
+  periodCount: Int!
+  periodLength: BigInt!
+  gracePeriod: BigInt!
+  cureWindow: BigInt!
+
+  status: NoteStatus!
+  mintedAt: BigInt!
+  closedAt: BigInt
+
+  listedAmount: BigInt! # currently escrowed and for sale
+  soldAmount: BigInt! # cumulative, primary sales only
+  originatorRetained: BigInt! # derived from the originator's Position.balance
+
+  periodsSettled: Int!
+  periodsMissed: Int!
+  totalRepaid: BigInt!
+  totalDistributed: BigInt!
+  servicingFeesPaid: BigInt!
+
+  periods: [Period!]! @derivedFrom(field: "note")
+  positions: [Position!]! @derivedFrom(field: "note")
+  sales: [Sale!]! @derivedFrom(field: "note")
+  repayments: [Repayment!]! @derivedFrom(field: "note")
+  actions: [ServicingAction!]! @derivedFrom(field: "note")
+}
+
+enum PeriodStatus {
+  Pending
+  Settled
+  Missed
+  Cured
+}
+
+type Period @entity(immutable: false) {
+  id: Bytes! # note address ++ index
+  note: Note!
+  index: Int!
+  start: BigInt!
+  end: BigInt!
+  due: BigInt!
+  paid: BigInt!
+  status: PeriodStatus!
+
+  settledAt: BigInt
+  latenessSeconds: BigInt # settledAt - end, floored at 0; null if unsettled
+  distributed: BigInt
+  servicingFee: BigInt
+}
+
+type Listing @entity(immutable: false) {
+  id: Bytes! # note address
+  note: Note!
+  amount: BigInt! # still escrowed
+  priceBps: Int!
+  open: Boolean!
+  listedTotal: BigInt! # cumulative ever listed
+  delistedTotal: BigInt! # cumulative pulled back, excludes sold
+  firstListedAt: BigInt!
+  updatedAt: BigInt!
+}
+
+type Sale @entity(immutable: true) {
+  id: Bytes! # tx hash ++ log index
+  note: Note!
+  buyer: Bytes!
+  amount: BigInt!
+  paid: BigInt!
+  priceBps: Int!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+type Position @entity(immutable: false) {
+  id: Bytes! # note address ++ holder address
+  note: Note!
+  holder: Bytes!
+  balance: BigInt! # authoritative, tracked through Transfer
+  bought: BigInt! # acquired in the primary offering
+  paid: BigInt! # what they paid for it
+  claimed: BigInt!
+  firstHeldAt: BigInt!
+}
+
+type Repayment @entity(immutable: true) {
+  id: Bytes! # tx hash ++ log index
+  note: Note!
+  period: Period!
+  payer: Bytes!
+  amount: BigInt!
+  onTime: Boolean!
+  byThirdParty: Boolean! # payer != borrower
+  byOriginator: Boolean! # payer == the note's originator
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+enum ActionKind {
+  Settled
+  MarkedDelinquent
+  Defaulted
+}
+
+type ServicingAction @entity(immutable: true) {
+  id: Bytes!
+  note: Note!
+  agent: Bytes!
+  kind: ActionKind!
+  periodIndex: Int
+  amount: BigInt # distributed, or shortfall
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+type Agent @entity(immutable: false) {
+  id: Bytes! # agent address
+  notesServiced: Int!
+  actionsTaken: Int!
+  feesEarned: BigInt!
+  firstActiveAt: BigInt!
+  lastActiveAt: BigInt!
+}
+
+type ProtocolDay @entity(immutable: false) {
+  id: String! # yyyy-mm-dd
+  date: BigInt!
+  notesIssued: Int!
+  principalRaised: BigInt!
+  repaidAmount: BigInt!
+  periodsSettled: Int!
+  periodsMissed: Int!
+}

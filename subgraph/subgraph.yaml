@@ -1,0 +1,208 @@
+specVersion: 1.0.0
+description: >-
+  ArcAsset — notes, periods, repayments, delinquency, holders and servicing
+  actions on Arc testnet. The read layer for the agent, the web UI, and
+  /intel/*. See docs/03-subgraph.md.
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: PartyRegistry
+    network: arc-testnet
+    source:
+      address: "0xEFa25395B840d6b241CF6fD71CC7089Be3ba805e"
+      abi: PartyRegistry
+      startBlock: 60708288
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Originator
+        - Borrower
+      abis:
+        - name: PartyRegistry
+          file: ./abis/PartyRegistry.json
+      eventHandlers:
+        - event: PartyVerified(indexed address,uint64,bytes32)
+          handler: handlePartyVerified
+        - event: PartyRevoked(indexed address,uint64)
+          handler: handlePartyRevoked
+      file: ./src/party-registry.ts
+
+  - kind: ethereum
+    name: IssuanceQueue
+    network: arc-testnet
+    source:
+      address: "0xf02774ee2dd08b85F69C113AaEEC62c3Df4745c0"
+      abi: IssuanceQueue
+      startBlock: 60708288
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Proposal
+        - Originator
+        - Borrower
+      abis:
+        - name: IssuanceQueue
+          file: ./abis/IssuanceQueue.json
+      eventHandlers:
+        - event: Proposed(indexed uint256,indexed address,indexed address,bytes32,string)
+          handler: handleProposed
+        - event: Accepted(indexed uint256,indexed address,uint64)
+          handler: handleAccepted
+        - event: Approved(indexed uint256,indexed address,bytes32,uint64)
+          handler: handleApproved
+        - event: Rejected(indexed uint256,indexed address,string)
+          handler: handleRejected
+        - event: Expired(indexed uint256)
+          handler: handleExpired
+      file: ./src/issuance-queue.ts
+
+  - kind: ethereum
+    name: NoteFactory
+    network: arc-testnet
+    source:
+      address: "0x68D84290353516cC6b67b6b0D252BE32F1059E4d"
+      abi: NoteFactory
+      startBlock: 60708288
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Note
+        - NoteIndex
+        - Proposal
+        - Originator
+        - Position
+      abis:
+        - name: NoteFactory
+          file: ./abis/NoteFactory.json
+      eventHandlers:
+        - event: NoteIssued(indexed uint256,indexed address,indexed address,address,uint256,bytes32,uint256,uint16,uint16,uint64)
+          handler: handleNoteIssued
+      file: ./src/note-factory.ts
+
+  - kind: ethereum
+    name: Offering
+    network: arc-testnet
+    source:
+      address: "0xf6190fF134BE3222bc90D618466a55c14397BB5b"
+      abi: Offering
+      startBlock: 60708288
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Listing
+        - Sale
+        - Position
+        - Note
+      abis:
+        - name: Offering
+          file: ./abis/Offering.json
+      eventHandlers:
+        - event: Listed(indexed uint256,indexed address,uint256,uint16)
+          handler: handleListed
+        - event: Repriced(indexed uint256,uint16,uint16)
+          handler: handleRepriced
+        - event: Delisted(indexed uint256,uint256,uint256)
+          handler: handleDelisted
+        - event: Bought(indexed uint256,indexed address,uint256,uint256,uint16)
+          handler: handleBought
+      file: ./src/offering.ts
+
+  - kind: ethereum
+    name: RepaymentVault
+    network: arc-testnet
+    source:
+      address: "0x6e27DF0BDE231a2f1864Ee7C9D82508Fa1C260be"
+      abi: RepaymentVault
+      startBlock: 60708288
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Repayment
+        - Period
+        - Note
+        - Originator
+        - Borrower
+        - ProtocolDay
+      abis:
+        - name: RepaymentVault
+          file: ./abis/RepaymentVault.json
+      eventHandlers:
+        - event: Repaid(indexed uint256,indexed uint16,indexed address,uint256,uint64,bool)
+          handler: handleRepaid
+      file: ./src/repayment-vault.ts
+
+  - kind: ethereum
+    name: ServicingRelay
+    network: arc-testnet
+    source:
+      address: "0xc190e6F26cE14e40D30251fDe25927A73a5D58b6"
+      abi: ServicingRelay
+      startBlock: 60708288
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Note
+        - Period
+        - Agent
+        - Originator
+        - Borrower
+        - ServicingAction
+        - ProtocolDay
+      abis:
+        - name: ServicingRelay
+          file: ./abis/ServicingRelay.json
+      eventHandlers:
+        - event: DelegationSet(indexed uint256,indexed address,uint64)
+          handler: handleDelegationSet
+        - event: DelegationRevoked(indexed uint256,indexed address,uint64)
+          handler: handleDelegationRevoked
+        - event: PeriodSettled(indexed uint256,indexed uint16,uint256,uint256,uint64)
+          handler: handlePeriodSettled
+        - event: MarkedDelinquent(indexed uint256,indexed uint16,uint256,uint64)
+          handler: handleMarkedDelinquent
+        - event: Defaulted(indexed uint256,uint16,uint64)
+          handler: handleDefaulted
+      file: ./src/servicing-relay.ts
+
+templates:
+  - kind: ethereum
+    name: RWANote
+    network: arc-testnet
+    source:
+      abi: RWANote
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Note
+        - Position
+        - Period
+        - Originator
+        - Borrower
+      abis:
+        - name: RWANote
+          file: ./abis/RWANote.json
+      eventHandlers:
+        - event: StatusChanged(indexed uint8,indexed uint8,uint64)
+          handler: handleStatusChanged
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer
+        - event: Claimed(indexed address,uint256)
+          handler: handleClaimed
+        - event: PaymentRecorded(indexed uint16,uint256,uint256)
+          handler: handlePaymentRecorded
+      file: ./src/rwa-note.ts
