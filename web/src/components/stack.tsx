@@ -6,41 +6,57 @@ import type { ReactNode } from "react";
  * path, World gates the write side — and each badge sits on the thing it is
  * responsible for.
  *
- * NOTE: these marks are simple geometric stand-ins, not the official
- * trademarks. Drop the real brand SVGs into public/ and swap `MARKS` before
- * submitting — an approximated logo is worse than none.
+ * The Graph's mark is the official one. Arc's and World's are still geometric
+ * stand-ins — swap them for the real brand SVGs before submitting; an
+ * approximated logo is worse than none.
  */
 export type Sponsor = "arc" | "graph" | "world";
 
-const MARKS: Record<Sponsor, ReactNode> = {
-  // An open ring — settlement that moves and comes back around.
-  arc: (
-    <circle
-      cx="8"
-      cy="8"
-      r="5.4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeDasharray="21 13"
-      transform="rotate(-50 8 8)"
-    />
-  ),
-  // A node with a satellite: an index and the thing it points at.
-  graph: (
-    <>
-      <circle cx="7.1" cy="7.1" r="4.9" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="12.7" cy="12.7" r="1.9" fill="currentColor" />
-    </>
-  ),
-  // A meridian: one person, one world.
-  world: (
-    <>
-      <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <ellipse cx="8" cy="8" rx="2.3" ry="5.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </>
-  ),
+const MARKS: Record<Sponsor, { viewBox: string; art: ReactNode }> = {
+  // Stand-in: an open ring, settlement that moves and comes back around.
+  arc: {
+    viewBox: "0 0 16 16",
+    art: (
+      <circle
+        cx="8"
+        cy="8"
+        r="5.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeDasharray="21 13"
+        transform="rotate(-50 8 8)"
+      />
+    ),
+  },
+  graph: {
+    viewBox: "0 0 32 32",
+    art: (
+      <path
+        fill="currentColor"
+        d="M14.2958 20.7692C9.17277 20.7692 5 16.6308 5 11.5385C5 6.44615 9.17277 2.30769 14.2958 2.30769C19.4188 2.30769 23.5915 6.44615 23.5915 11.5385C23.5915 16.6308 19.4188 20.7692 14.2958 20.7692ZM14.2958 5.38462C10.877 5.38462 8.09859 8.14359 8.09859 11.5385C8.09859 14.9333 10.877 17.6923 14.2958 17.6923C17.7146 17.6923 20.493 14.9333 20.493 11.5385C20.493 8.14359 17.7146 5.38462 14.2958 5.38462ZM16.9399 29.5487L23.1371 23.3949C23.7413 22.7949 23.7413 21.8205 23.1371 21.2205C22.5329 20.6205 21.5516 20.6205 20.9474 21.2205L14.7502 27.3744C14.146 27.9744 14.146 28.9487 14.7502 29.5487C15.0549 29.8513 15.4474 30 15.8451 30C16.2427 30 16.6404 29.8513 16.9399 29.5487ZM25.1408 2C24.1183 2 23.2817 2.83077 23.2817 3.84615C23.2817 4.86154 24.1183 5.69231 25.1408 5.69231C26.1634 5.69231 27 4.86154 27 3.84615C27 2.83077 26.1634 2 25.1408 2Z"
+      />
+    ),
+  },
+  // Stand-in: a meridian, one person one world.
+  world: {
+    viewBox: "0 0 16 16",
+    art: (
+      <>
+        <circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <ellipse
+          cx="8"
+          cy="8"
+          rx="2.3"
+          ry="5.4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+        />
+      </>
+    ),
+  },
 };
 
 const NAMES: Record<Sponsor, string> = {
@@ -49,16 +65,25 @@ const NAMES: Record<Sponsor, string> = {
   world: "World ID",
 };
 
-export function StackMark({ sponsor, className = "" }: { sponsor: Sponsor; className?: string }) {
+export function StackMark({
+  sponsor,
+  size = 13,
+  className = "",
+}: {
+  sponsor: Sponsor;
+  size?: number;
+  className?: string;
+}) {
+  const mark = MARKS[sponsor];
   return (
     <svg
-      viewBox="0 0 16 16"
-      width="13"
-      height="13"
+      viewBox={mark.viewBox}
+      width={size}
+      height={size}
       aria-hidden="true"
       className={`shrink-0 ${className}`}
     >
-      {MARKS[sponsor]}
+      {mark.art}
     </svg>
   );
 }
