@@ -18,7 +18,16 @@ import {
   errorFor,
   type Terms,
 } from "@/lib/terms";
-import { Button, Field, SectionHead, Stat, inputClass as inputCls } from "./ui";
+import {
+  Button,
+  Disclosure,
+  Field,
+  InlineInput,
+  SectionHead,
+  Segmented,
+  Stat,
+  inputClass as inputCls,
+} from "./ui";
 import { StackBadge } from "./stack";
 import { ScheduleChart } from "./schedule-chart";
 import {
@@ -44,6 +53,23 @@ const PERIOD_LENGTHS = [
   { label: "30 days", value: 30 * DAY },
 ] as const;
 
+const GRACE_OPTIONS = [
+  { label: "5 min", value: 5 * MINUTE },
+  { label: "1 hour", value: HOUR },
+  { label: "1 day", value: DAY },
+  { label: "3 days", value: 3 * DAY },
+] as const;
+
+const CURE_OPTIONS = [
+  { label: "10 min", value: 10 * MINUTE },
+  { label: "1 day", value: DAY },
+  { label: "7 days", value: 7 * DAY },
+  { label: "30 days", value: 30 * DAY },
+] as const;
+
+/** Errors from the fields that live in the sentence, shown together beneath it. */
+const SENTENCE_FIELDS = ["principal", "borrower", "periodCount", "couponBps"] as const;
+
 type Draft = {
   borrower: string;
   principal: string;
@@ -67,6 +93,41 @@ const INITIAL: Draft = {
   cureWindow: 30 * DAY,
   acceptHours: "48",
 };
+
+/**
+ * Deal shapes people actually issue, so the common case is one click and the
+ * form is where you adjust rather than where you start. "Demo" exists because
+ * the contract's period floor is one minute precisely so a period can settle
+ * on camera — see docs/02-contracts.md.
+ */
+const PRESETS = {
+  receivable: {
+    label: "Receivable",
+    patch: { periodCount: "6", periodLength: 30 * DAY, couponBps: "85", gracePeriod: 3 * DAY, cureWindow: 30 * DAY },
+  },
+  advance: {
+    label: "Revenue advance",
+    patch: { periodCount: "12", periodLength: 30 * DAY, couponBps: "100", gracePeriod: 3 * DAY, cureWindow: 30 * DAY },
+  },
+  bridge: {
+    label: "Short bridge",
+    patch: { periodCount: "3", periodLength: 7 * DAY, couponBps: "150", gracePeriod: DAY, cureWindow: 7 * DAY },
+  },
+  demo: {
+    label: "Demo · minutes",
+    patch: { periodCount: "3", periodLength: MINUTE, couponBps: "100", gracePeriod: 5 * MINUTE, cureWindow: 10 * MINUTE },
+  },
+} as const;
+
+type PresetKey = keyof typeof PRESETS | "custom";
+
+const PRESET_OPTIONS = [
+  ...(Object.keys(PRESETS) as (keyof typeof PRESETS)[]).map((k) => ({
+    label: PRESETS[k].label,
+    value: k as PresetKey,
+  })),
+  { label: "Custom", value: "custom" as PresetKey },
+];
 
 function toTerms(d: Draft, now: number): { terms: Terms | null; parseError?: string } {
   try {
@@ -94,13 +155,24 @@ export function ProposeForm() {
   const [docError, setDocError] = useState<string | null>(null);
   const documentHash = useMemo(() => manifestHash(docs), [docs]);
   const [draft, setDraft] = useState<Draft>(INITIAL);
+  const [preset, setPreset] = useState<PresetKey>("advance");
+
+  function applyPreset(key: PresetKey) {
+    setPreset(key);
+    if (key === "custom") return;
+    setDraft((d) => ({ ...d, ...PRESETS[key].patch }));
+  }
 
   // Pinned once per mount: a clock that ticks would make the preview jitter
   // and re-run validation on every render.
   const [now] = useState(() => Math.floor(Date.now() / 1000));
 
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) =>
+  // Touching anything by hand means this is no longer a named shape — say so
+  // rather than leaving a preset highlighted that no longer describes the deal.
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
     setDraft((d) => ({ ...d, [k]: v }));
+    setPreset("custom");
+  };
 
   const { terms, parseError } = useMemo(() => toTerms(draft, now), [draft, now]);
   const errors = useMemo(
@@ -126,20 +198,144 @@ export function ProposeForm() {
     <div className="grid gap-8 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
       <form className="space-y-8" onSubmit={(e) => e.preventDefault()}>
         <section className="space-y-4">
-          <SectionHead index="A" title="Counterparty" />
-        <Field
-          label="Borrower"
-          hint="The counterparty who owes on this loan. Must be verified, and cannot be you."
-          error={errorFor(errors, "borrower")}
-        >
-          <input
-            className={inputCls}
-            placeholder="0x…"
-            spellCheck={false}
-            value={draft.borrower}
-            onChange={(e) => set("borrower", e.target.value)}
+          <SectionHead
+            index="A"
+            title="Terms"
+            aside={<StackBadge sponsor="arc" role="native USDC" muted />}
           />
-        </Field>
+
+          <Segmented
+            label="Deal shape"
+            options={PRESET_OPTIONS}
+            value={preset}
+            onChange={applyPreset}
+          />
+
+          {/*
+            The terms as a sentence. Eight labelled boxes make you check eight
+            things separately; one line makes the deal readable in a glance and
+            makes a wrong number look wrong.
+          */}
+          <div className="rounded-card border border-line bg-panel p-5 text-[15px] leading-[2.2]">
+            Lend{" "}
+            <InlineInput
+              aria-label="Principal"
+              value={draft.principal}
+              inputMode="decimal"
+              min={9}
+              invalid={Boolean(errorFor(errors, "principal") ?? parseError)}
+              onChange={(e) => set("principal", e.target.value)}
+            />{" "}
+            <span className="text-muted">USDC to</span>{" "}
+            <InlineInput
+              aria-label="Borrower address"
+              value={draft.borrower}
+              placeholder="0x…"
+              spellCheck={false}
+              min={12}
+              className="text-[13px]"
+              invalid={Boolean(errorFor(errors, "borrower"))}
+              onChange={(e) => set("borrower", e.target.value)}
+            />
+            <span className="text-muted">, repaid over</span>{" "}
+            <InlineInput
+              aria-label="Number of periods"
+              value={draft.periodCount}
+              inputMode="numeric"
+              min={3}
+              invalid={Boolean(errorFor(errors, "periodCount"))}
+              onChange={(e) => set("periodCount", e.target.value)}
+            />{" "}
+            <span className="text-muted">periods, paying</span>{" "}
+            <InlineInput
+              aria-label="Coupon in basis points per period"
+              value={draft.couponBps}
+              inputMode="numeric"
+              min={4}
+              invalid={Boolean(errorFor(errors, "couponBps"))}
+              onChange={(e) => set("couponBps", e.target.value)}
+            />{" "}
+            <span className="text-muted">bps each.</span>
+          </div>
+
+          <div className="space-y-2">
+            <p className="eyebrow">Period length</p>
+            <Segmented
+              label="Period length"
+              options={PERIOD_LENGTHS}
+              value={draft.periodLength}
+              onChange={(v) => set("periodLength", v)}
+            />
+          </div>
+
+          {/* Errors from the sentence, gathered where they can be read. */}
+          {SENTENCE_FIELDS.map((f) => {
+            const message = f === "principal" ? (errorFor(errors, f) ?? parseError) : errorFor(errors, f);
+            return message ? (
+              <p key={f} className="font-mono text-[11px] text-danger">
+                {message}
+              </p>
+            ) : null;
+          })}
+
+          {terms ? (
+            <p className="text-[12px] text-muted">
+              {formatBps(terms.couponBps)} per {formatDuration(terms.periodLength)} period
+              {" · ≈"}
+              {formatRate(apr)} APR
+            </p>
+          ) : null}
+
+          <Disclosure summary="Servicing & deadlines · defaults are fine">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="eyebrow">Grace period</p>
+                <Segmented
+                  label="Grace period"
+                  options={GRACE_OPTIONS}
+                  value={draft.gracePeriod}
+                  onChange={(v) => set("gracePeriod", v)}
+                />
+                <p className="text-[11px] text-muted">After a period ends, before it is late.</p>
+              </div>
+              <div className="space-y-2">
+                <p className="eyebrow">Cure window</p>
+                <Segmented
+                  label="Cure window"
+                  options={CURE_OPTIONS}
+                  value={draft.cureWindow}
+                  onChange={(v) => set("cureWindow", v)}
+                />
+                {errorFor(errors, "cureWindow") ? (
+                  <p className="font-mono text-[11px] text-danger">{errorFor(errors, "cureWindow")}</p>
+                ) : null}
+              </div>
+              <Field
+                label="Servicing fee"
+                hint="Basis points of each repayment."
+                error={errorFor(errors, "servicingFeeBps")}
+              >
+                <input
+                  className={inputCls}
+                  value={draft.servicingFeeBps}
+                  inputMode="numeric"
+                  onChange={(e) => set("servicingFeeBps", e.target.value)}
+                />
+              </Field>
+              <Field
+                label="Acceptance window (hours)"
+                hint="After this the proposal expires and anyone can close it."
+                error={errorFor(errors, "acceptDeadline")}
+              >
+                <input
+                  className={inputCls}
+                  value={draft.acceptHours}
+                  inputMode="numeric"
+                  onChange={(e) => set("acceptHours", e.target.value)}
+                />
+              </Field>
+            </div>
+          </Disclosure>
 
         </section>
 
@@ -224,122 +420,6 @@ export function ProposeForm() {
 
         </section>
 
-        <section className="space-y-4">
-          <SectionHead
-            index="C"
-            title="Terms"
-            aside={<StackBadge sponsor="arc" role="native USDC" muted />}
-          />
-        <Field
-          label="Principal"
-          hint="Face value of the loan, in USDC. This is also the token supply — you hold all of it at mint."
-          error={errorFor(errors, "principal") ?? parseError}
-        >
-          <input
-            className={inputCls}
-            value={draft.principal}
-            inputMode="decimal"
-            onChange={(e) => set("principal", e.target.value)}
-          />
-        </Field>
-
-
-        <Field
-          label="Coupon"
-          hint={
-            terms
-              ? `${formatBps(terms.couponBps)} per ${formatDuration(terms.periodLength)} period · ≈${formatRate(apr)} APR`
-              : "Basis points per period."
-          }
-          error={errorFor(errors, "couponBps")}
-        >
-          <div className="flex items-center gap-2">
-            <input
-              className={inputCls}
-              value={draft.couponBps}
-              inputMode="numeric"
-              onChange={(e) => set("couponBps", e.target.value)}
-            />
-            <span className="eyebrow">bps</span>
-          </div>
-        </Field>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Periods" error={errorFor(errors, "periodCount")}>
-            <input
-              className={inputCls}
-              value={draft.periodCount}
-              inputMode="numeric"
-              onChange={(e) => set("periodCount", e.target.value)}
-            />
-          </Field>
-          <Field label="Period length" error={errorFor(errors, "periodLength")}>
-            <select
-              className={inputCls}
-              value={draft.periodLength}
-              onChange={(e) => set("periodLength", Number(e.target.value))}
-            >
-              {PERIOD_LENGTHS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Grace period" hint="After a period ends, before it is late.">
-            <select
-              className={inputCls}
-              value={draft.gracePeriod}
-              onChange={(e) => set("gracePeriod", Number(e.target.value))}
-            >
-              <option value={5 * MINUTE}>5 minutes (demo)</option>
-              <option value={HOUR}>1 hour</option>
-              <option value={DAY}>1 day</option>
-              <option value={3 * DAY}>3 days</option>
-            </select>
-          </Field>
-          <Field label="Cure window" error={errorFor(errors, "cureWindow")}>
-            <select
-              className={inputCls}
-              value={draft.cureWindow}
-              onChange={(e) => set("cureWindow", Number(e.target.value))}
-            >
-              <option value={10 * MINUTE}>10 minutes (demo)</option>
-              <option value={DAY}>1 day</option>
-              <option value={7 * DAY}>7 days</option>
-              <option value={30 * DAY}>30 days</option>
-            </select>
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Servicing fee" hint="Basis points of each repayment." error={errorFor(errors, "servicingFeeBps")}>
-            <input
-              className={inputCls}
-              value={draft.servicingFeeBps}
-              inputMode="numeric"
-              onChange={(e) => set("servicingFeeBps", e.target.value)}
-            />
-          </Field>
-          <Field
-            label="Acceptance window"
-            hint="Hours the borrower has to accept. After that the proposal expires and anyone can close it."
-            error={errorFor(errors, "acceptDeadline")}
-          >
-            <input
-              className={inputCls}
-              value={draft.acceptHours}
-              inputMode="numeric"
-              onChange={(e) => set("acceptHours", e.target.value)}
-            />
-          </Field>
-        </div>
-
-        </section>
-
         <Button
           type="submit"
           tone="primary"
@@ -359,7 +439,7 @@ export function ProposeForm() {
       </form>
 
       <section className="space-y-4">
-        <SectionHead index="D" title="Schedule preview" />
+        <SectionHead index="C" title="Schedule preview" />
         {schedule && terms ? (
           <>
             <div className="rounded-card border border-line bg-panel">

@@ -168,6 +168,95 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`${inputClass} ${props.className ?? ""}`} />;
 }
 
+/**
+ * An input that sits inside a sentence. Sized to its own content so the line
+ * reads as prose with the numbers filled in, rather than as a field with a
+ * caption — the terms are a sentence, and a form that looks like one is
+ * easier to check than eight labelled boxes.
+ */
+export function InlineInput({
+  value,
+  min = 4,
+  invalid = false,
+  className = "",
+  ...rest
+}: {
+  value: string;
+  min?: number;
+  invalid?: boolean;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "size">) {
+  return (
+    <input
+      {...rest}
+      value={value}
+      // +1ch of slack so the caret never sits on the underline's edge.
+      style={{ width: `${Math.max(value.length + 1, min)}ch` }}
+      className={`border-b bg-transparent pb-0.5 text-center font-mono tnum text-ink outline-none transition-colors ${
+        invalid ? "border-danger" : "border-line-strong focus:border-accent"
+      } ${className}`}
+    />
+  );
+}
+
+/**
+ * A short closed set as chips rather than a select. Three or four options are
+ * faster to compare side by side than behind a dropdown, and the chosen one
+ * stays visible.
+ */
+export function Segmented<T extends string | number>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: readonly { label: string; value: T }[];
+  value: T;
+  onChange: (v: T) => void;
+  label: string;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1">
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button
+            key={String(o.value)}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(o.value)}
+            className={`rounded-card border px-2.5 py-1 font-mono text-[11px] transition-colors ${
+              active
+                ? "border-accent bg-accent-faint text-accent"
+                : "border-line bg-raised text-muted hover:border-line-strong hover:text-ink"
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Defaults nobody usually touches, out of the way but one click from view. */
+export function Disclosure({
+  summary,
+  children,
+}: {
+  summary: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="group rounded-card border border-line bg-panel">
+      <summary className="eyebrow cursor-pointer list-none px-4 py-3 hover:text-ink">
+        <span className="inline-block w-4 transition-transform group-open:rotate-90">›</span>
+        {summary}
+      </summary>
+      <div className="border-t border-line px-4 py-4">{children}</div>
+    </details>
+  );
+}
+
 /** A label/value pair. Values are mono because they are all data. */
 export function Stat({
   label,
