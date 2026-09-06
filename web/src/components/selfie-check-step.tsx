@@ -3,6 +3,8 @@
 import type { Address } from "viem";
 import { addressUrl } from "@/lib/chain";
 import { PARTY_REGISTRY } from "@/lib/deployments";
+import { shortAddress } from "@/lib/format";
+import { Chip, Eyebrow, Panel } from "./ui";
 
 /**
  * Where World Selfie Check lands — see docs/06-identity.md.
@@ -28,47 +30,63 @@ import { PARTY_REGISTRY } from "@/lib/deployments";
  */
 export function SelfieCheckStep({ party }: { party: Address | undefined }) {
   return (
-    <div className="rounded-lg border border-black/10 p-6 dark:border-white/15">
-      <h2 className="font-medium">Verify you are a real person</h2>
-      <p className="mt-1 max-w-prose text-sm opacity-70">
+    <Panel className="max-w-2xl">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <Eyebrow>Verification required</Eyebrow>
+          <h2 className="mt-2 text-lg font-medium tracking-tight">
+            Verify you are a real person
+          </h2>
+        </div>
+        <Chip tone="warn" dot>
+          not wired
+        </Chip>
+      </div>
+
+      <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-muted">
         Originating and borrowing both require one verification, once, per
-        address. It proves a live human — nothing more. It is{" "}
-        <strong>not</strong> KYC: no name, no country, no document, and it says
-        nothing about whether a loan will be repaid.
+        address. It proves a live human — nothing more. It is <em>not</em> KYC:
+        no name, no country, no document, and it says nothing about whether a
+        loan will be repaid.
       </p>
 
-      <div className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs">
-        <p className="font-medium">Verification is not wired up yet</p>
-        <p className="mt-1 opacity-80">
+      <div className="mt-5 rounded-card border border-warn/40 bg-warn-faint px-3.5 py-3">
+        <Eyebrow className="text-warn">Blocked</Eyebrow>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-ink/80">
           Selfie Check is verified through World&apos;s cloud API, and the World
           ID Router is not deployed on Arc — so proofs cannot be checked
           on-chain here directly. It needs an attesting verifier contract, which
           is not deployed. Until it is, no address can be verified and{" "}
-          <code>propose()</code> will revert for everyone.
+          <code className="font-mono">propose()</code> reverts for everyone.
         </p>
       </div>
 
-      <dl className="mt-4 grid gap-1 text-xs opacity-60">
-        <div className="flex gap-2">
-          <dt>Registry</dt>
-          <dd>
-            <a
-              className="underline underline-offset-2"
-              href={addressUrl(PARTY_REGISTRY)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {PARTY_REGISTRY}
-            </a>
-          </dd>
-        </div>
+      <dl className="mt-5 space-y-2 border-t border-line pt-4">
+        <Row label="Registry">
+          <a
+            className="text-muted underline underline-offset-2 hover:text-ink"
+            href={addressUrl(PARTY_REGISTRY)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {shortAddress(PARTY_REGISTRY)}
+          </a>
+        </Row>
         {party ? (
-          <div className="flex gap-2">
-            <dt>Your address</dt>
-            <dd className="font-mono">{party}</dd>
-          </div>
+          <Row label="Your address">
+            <span className="text-muted">{shortAddress(party)}</span>
+          </Row>
         ) : null}
       </dl>
+    </Panel>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-4">
+      <dt className="eyebrow w-28 shrink-0">{label}</dt>
+      <dd className="font-mono text-[12px]">{children}</dd>
     </div>
   );
 }

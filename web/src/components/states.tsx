@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Eyebrow } from "./ui";
 
 /**
  * Every data-driven view handles four states explicitly — docs/05-web.md.
@@ -8,9 +9,9 @@ import type { ReactNode } from "react";
 /** Skeleton matching the final layout, not a centred spinner. */
 export function Skeleton({ rows = 3, className = "" }: { rows?: number; className?: string }) {
   return (
-    <div className={`animate-pulse space-y-3 ${className}`} aria-busy="true" aria-live="polite">
+    <div className={`animate-pulse space-y-2 ${className}`} aria-busy="true" aria-live="polite">
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="h-10 rounded bg-black/5 dark:bg-white/10" />
+        <div key={i} className="h-10 rounded-card border border-line bg-raised" />
       ))}
       <span className="sr-only">Loading</span>
     </div>
@@ -28,10 +29,10 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-dashed border-black/15 p-8 text-center dark:border-white/20">
-      <p className="font-medium">{title}</p>
-      <p className="mt-1 text-sm opacity-70">{hint}</p>
-      {action ? <div className="mt-4">{action}</div> : null}
+    <div className="rounded-card border border-dashed border-line-strong px-6 py-10 text-center">
+      <p className="text-sm font-medium text-ink">{title}</p>
+      <p className="mx-auto mt-1.5 max-w-md text-[13px] leading-relaxed text-muted">{hint}</p>
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }
@@ -43,14 +44,14 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   return (
     <div
       role="alert"
-      className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm"
+      className="rounded-card border border-danger/40 bg-danger-faint p-4"
     >
-      <p className="font-medium text-red-700 dark:text-red-400">Request failed</p>
-      <p className="mt-1 font-mono text-xs break-words opacity-80">{message}</p>
+      <Eyebrow className="text-danger">Request failed</Eyebrow>
+      <p className="mt-2 font-mono text-[11px] leading-relaxed break-words text-ink">{message}</p>
       {onRetry ? (
         <button
           onClick={onRetry}
-          className="mt-3 rounded border border-current px-3 py-1 text-xs font-medium"
+          className="mt-3 rounded-card border border-danger/40 px-3 py-1.5 font-mono text-[11px] text-danger transition-colors hover:border-danger"
         >
           Retry
         </button>
@@ -65,7 +66,8 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
  */
 export function StaleBanner({ blocksBehind }: { blocksBehind: number }) {
   return (
-    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+    <div className="flex items-center gap-2 rounded-card border border-warn/40 bg-warn-faint px-3 py-2 font-mono text-[11px] text-warn">
+      <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
       Indexer is {blocksBehind.toLocaleString()} block
       {blocksBehind === 1 ? "" : "s"} behind — data below may be out of date.
     </div>
@@ -82,10 +84,17 @@ const PHASE_LABEL: Record<Exclude<TxPhase, "idle">, string> = {
   failed: "Transaction failed",
 };
 
+const PHASE_TONE: Record<Exclude<TxPhase, "idle">, string> = {
+  pending: "text-muted",
+  confirmed: "text-muted",
+  indexed: "text-accent",
+  failed: "text-danger",
+};
+
 export function TxStatus({ phase }: { phase: TxPhase }) {
   if (phase === "idle") return null;
   return (
-    <p className="text-xs opacity-80" aria-live="polite">
+    <p className={`font-mono text-[11px] ${PHASE_TONE[phase]}`} aria-live="polite">
       {PHASE_LABEL[phase]}
     </p>
   );

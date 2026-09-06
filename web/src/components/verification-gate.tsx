@@ -43,7 +43,7 @@ export function VerificationGate({
       return (
         <div className="space-y-3">
           <ErrorState error={verification.error} onRetry={verification.retry} />
-          <p className="text-xs opacity-60">
+          <p className="text-[12px] leading-relaxed text-muted">
             We could not read your verification status, so this form stays
             closed. This is not a rejection — it is us declining to guess.
           </p>
@@ -79,13 +79,13 @@ function Notice({
   tone?: "neutral" | "danger";
 }) {
   const frame =
-    tone === "danger"
-      ? "border-red-500/30 bg-red-500/5"
-      : "border-black/10 dark:border-white/15";
+    tone === "danger" ? "border-danger/40 bg-danger-faint" : "border-line bg-panel";
   return (
-    <div className={`rounded-lg border p-5 ${frame}`}>
-      <p className="font-medium">{title}</p>
-      <p className="mt-1 max-w-prose text-sm opacity-70">{body}</p>
+    <div className={`max-w-2xl rounded-card border p-5 ${frame}`}>
+      <p className={`text-sm font-medium ${tone === "danger" ? "text-danger" : "text-ink"}`}>
+        {title}
+      </p>
+      <p className="mt-1.5 max-w-prose text-[13px] leading-relaxed text-muted">{body}</p>
     </div>
   );
 }
