@@ -29,9 +29,19 @@ not assumed. This was the single biggest open risk in the original build plan
 our favor: no Goldsky fallback or Chainlink swap needed.
 
 ```bash
-graph auth --studio <deploy-key>          # from thegraph.com/studio
+bunx graph auth <deploy-key>              # from thegraph.com/studio
 bun run deploy:studio                     # prompts for a version label
 ```
+
+Deployed and indexing as of v0.0.1:
+
+```
+https://api.studio.thegraph.com/query/1758626/arcasset/v0.0.1
+```
+
+That is Studio's development endpoint — free, rate-limited, no API key needed.
+It is what `NEXT_PUBLIC_SUBGRAPH_URL` points at. The version segment changes on
+every deploy, so bump it in `web/.env` when you redeploy.
 
 The addresses and `startBlock` in `subgraph.yaml` are pinned to the current
 Arc testnet deployment in `contracts/deployments/5042002.json`
