@@ -3,6 +3,8 @@ cache/
 broadcast/**/dry-run/
 # Local Anvil run logs; real-network broadcasts stay tracked as a record.
 broadcast/*/31337/
+# run-latest.json duplicates the timestamped file; keep one copy of the record.
+broadcast/*/*/run-[0-9]*.json
 .env
 
 # Local Anvil deployments are regenerated on every run; real networks are tracked.

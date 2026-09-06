@@ -173,25 +173,23 @@ Money is `bigint` integer arithmetic from the contract to the render call, and d
 
 ## Deployed — Arc testnet (chain 5042002)
 
-Not yet deployed. All six contracts are written, tested (115 Foundry tests) and verified end-to-end against a live Anvil node by `contracts/script/e2e.sh`, which runs the whole flow — deploy, verify parties, propose, accept, approve, mint, list, buy, repay, settle, claim, miss, cure, mature — and asserts 37 conditions.
+All seven deployed and **verified on Blockscout**, Sep 6.
 
-Deploying is one command once a funded signer exists:
+| Contract | Address | |
+|---|---|---|
+| `PartyRegistry` | [`0xEFa25395B840d6b241CF6fD71CC7089Be3ba805e`](https://testnet.arcscan.app/address/0xEFa25395B840d6b241CF6fD71CC7089Be3ba805e) | One human, one address |
+| `IssuanceQueue` | [`0xf02774ee2dd08b85F69C113AaEEC62c3Df4745c0`](https://testnet.arcscan.app/address/0xf02774ee2dd08b85F69C113AaEEC62c3Df4745c0) | propose → accept → approve → mint |
+| `NoteFactory` | [`0x68D84290353516cC6b67b6b0D252BE32F1059E4d`](https://testnet.arcscan.app/address/0x68D84290353516cC6b67b6b0D252BE32F1059E4d) | Deploys notes at a CREATE2 address |
+| `RepaymentVault` | [`0x6e27DF0BDE231a2f1864Ee7C9D82508Fa1C260be`](https://testnet.arcscan.app/address/0x6e27DF0BDE231a2f1864Ee7C9D82508Fa1C260be) | Holds value between repayment and distribution |
+| `ServicingRelay` | [`0xc190e6F26cE14e40D30251fDe25927A73a5D58b6`](https://testnet.arcscan.app/address/0xc190e6F26cE14e40D30251fDe25927A73a5D58b6) | The agent's only reachable surface |
+| `Offering` | [`0xf6190fF134BE3222bc90D618466a55c14397BB5b`](https://testnet.arcscan.app/address/0xf6190fF134BE3222bc90D618466a55c14397BB5b) | List, reprice, delist, buy |
+| `PersonhoodVerifier` | [`0x84388e1bB22727b73Fe2791fF4d6F1cB0CE6f7dd`](https://testnet.arcscan.app/address/0x84388e1bB22727b73Fe2791fF4d6F1cB0CE6f7dd) | ⚠ MockVerifier — proves nothing yet |
 
-```bash
-cd contracts
-./script/deploy-testnet.sh --keystore ~/.foundry/keystores/<name>
-```
+Deployed and wired in one transaction batch by `contracts/script/deploy-testnet.sh`, which refuses to run unless the RPC reports chain 5042002. Every wiring edge was then checked by address against the live chain. Total gas: 0.18 USDC.
 
-It refuses to run unless the RPC reports chain 5042002, verifies on Blockscout as it goes, and writes `deployments/5042002.json` — the single source every package reads. Nothing hardcodes an address.
+`PersonhoodVerifier` is a stand-in until the World Selfie Check adapter lands. It lives in `script/`, not `src/`, and the deploy logs a warning when it deploys one — it must never be mistaken for something that proves personhood.
 
-| Contract | Address |
-|---|---|
-| `PartyRegistry` | Not deployed |
-| `IssuanceQueue` | Not deployed |
-| `Offering` | Not deployed |
-| `NoteFactory` | Not deployed |
-| `RepaymentVault` | Not deployed |
-| `ServicingRelay` | Not deployed |
+Addresses live in `contracts/deployments/5042002.json`, the single source every package reads. Nothing hardcodes an address.
 
 `RWANote` is deployed per note by `NoteFactory` at a CREATE2 address, so the UI can route to a note before its transaction confirms.
 
