@@ -12,10 +12,11 @@ import {RWANote} from "./RWANote.sol";
 contract NoteFactory is INoteFactory, Ownable {
     address public immutable queue;
 
-    /// @dev The servicing relay, the only address a note will accept value
-    /// from. Set once: the relay needs the factory's address and the factory
-    /// needs the relay's, so one of them has to be wired after deployment.
-    /// Set-once means that wiring is not a standing lever over money flow.
+    /// @dev The vault that records payments and the relay that distributes.
+    /// Both need the factory's address and the factory needs theirs, so this
+    /// edge is wired after deployment — set-once, so it is a deployment step
+    /// rather than a standing lever over where money goes.
+    address public vault;
     address public relay;
 
     mapping(uint256 noteId => address) public noteOf;
@@ -33,11 +34,11 @@ contract NoteFactory is INoteFactory, Ownable {
         uint16 periodCount,
         uint64 periodLength
     );
-    event RelaySet(address indexed relay);
+    event InfrastructureSet(address indexed vault, address indexed relay);
 
     error NotQueue();
-    error RelayNotSet();
-    error RelayAlreadySet();
+    error InfrastructureNotSet();
+    error InfrastructureAlreadySet();
     error ZeroAddress();
 
     constructor(address queue_, address owner_) Ownable(owner_) {
@@ -45,11 +46,12 @@ contract NoteFactory is INoteFactory, Ownable {
         queue = queue_;
     }
 
-    function setRelay(address relay_) external onlyOwner {
-        if (relay_ == address(0)) revert ZeroAddress();
-        if (relay != address(0)) revert RelayAlreadySet();
+    function setInfrastructure(address vault_, address relay_) external onlyOwner {
+        if (vault_ == address(0) || relay_ == address(0)) revert ZeroAddress();
+        if (relay != address(0)) revert InfrastructureAlreadySet();
+        vault = vault_;
         relay = relay_;
-        emit RelaySet(relay_);
+        emit InfrastructureSet(vault_, relay_);
     }
 
     function deploy(
@@ -59,15 +61,11 @@ contract NoteFactory is INoteFactory, Ownable {
         bytes32 documentHash
     ) external returns (uint256 noteId, address note) {
         if (msg.sender != queue) revert NotQueue();
-        address relay_ = relay;
         // Better to refuse than to deploy a note nothing can ever settle.
-        if (relay_ == address(0)) revert RelayNotSet();
+        if (relay == address(0)) revert InfrastructureNotSet();
 
         noteId = ++noteCount;
-        // CREATE2 on (originator, proposalId) so the address is known before the
-        // transaction lands and the UI can route to it optimistically.
-        bytes32 salt = keccak256(abi.encode(originator, proposalId));
-        note = address(new RWANote{salt: salt}(noteId, originator, terms, documentHash, relay_));
+        note = _create(noteId, proposalId, originator, terms, documentHash);
         noteOf[noteId] = note;
 
         emit NoteIssued(
@@ -84,6 +82,22 @@ contract NoteFactory is INoteFactory, Ownable {
         );
     }
 
+    /// @dev Split out so the emit above is not fighting for stack slots with
+    /// the deployment's locals.
+    function _create(
+        uint256 noteId,
+        uint256 proposalId,
+        address originator,
+        Terms calldata terms,
+        bytes32 documentHash
+    ) private returns (address) {
+        // CREATE2 on (originator, proposalId) so the address is known before the
+        // transaction lands and the UI can route to it optimistically.
+        bytes32 salt = keccak256(abi.encode(originator, proposalId));
+        return
+            address(new RWANote{salt: salt}(noteId, originator, terms, documentHash, vault, relay));
+    }
+
     /// @notice The address `deploy` will produce, computable before it is called.
     function predictNote(
         uint256 proposalId,
@@ -95,7 +109,7 @@ contract NoteFactory is INoteFactory, Ownable {
         bytes32 initCodeHash = keccak256(
             abi.encodePacked(
                 type(RWANote).creationCode,
-                abi.encode(noteCount + 1, originator, terms, documentHash, relay)
+                abi.encode(noteCount + 1, originator, terms, documentHash, vault, relay)
             )
         );
         return address(

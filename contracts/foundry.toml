@@ -30,7 +30,15 @@ deny = "warnings"
 # that matters, and the alternative (block numbers) is worse: block time on Arc
 # is not a constant we control, so a schedule denominated in blocks would drift
 # against the schedule in the signed agreement.
-exclude_lints = ["block-timestamp"]
+exclude_lints = [
+    "block-timestamp",
+    # The lint exists for tokens that return false instead of reverting
+    # (USDT-style). There is no foreign ERC20 anywhere in this system —
+    # settlement is the chain's native asset, and the only token is RWANote
+    # itself, which is OpenZeppelin's ERC20 and reverts on failure. Every hit
+    # is a transfer of our own note inside a test.
+    "erc20-unchecked-transfer",
+]
 
 [fmt]
 line_length = 100

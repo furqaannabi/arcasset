@@ -248,11 +248,11 @@ address is known before the transaction lands — the UI shows it optimistically
 `predictNote(...)` returns that address, and a test asserts it matches what
 `deploy` actually produces.
 
-**`setRelay` is set-once.** The relay needs the factory's address and the factory
-needs the relay's, so one edge has to be wired after deployment. Set-once means
-that wiring is a deployment step rather than a standing lever over where money
-goes. `deploy` reverts while the relay is unset: better to refuse than to
-produce a note nothing can ever settle.
+**`setInfrastructure(vault, relay)` is set-once.** Both need the factory's
+address and the factory needs theirs, so this edge is wired after deployment.
+Set-once makes it a deployment step rather than a standing lever over where
+money goes. `deploy` reverts while it is unset: better to refuse than to produce
+a note nothing can ever settle.
 
 A note opens directly in `Active`, and the originator receives **100% of the
 supply**.
@@ -276,6 +276,10 @@ ERC-20 where one token is one unit of principal contributed. Balance is a
 holder's pro-rata share; transfers move future claims with it.
 
 ```solidity
+function recordPayment(uint16 index, uint256 amount) external;  // vault only
+function markSettled(uint16 index) external;    // relay only
+function markMissed(uint16 index) external;     // relay only
+function markDefaulted() external;              // relay only
 function distribute() external payable;         // relay only; credits the accumulator
 function claim() external returns (uint256);    // sends native USDC to msg.sender
 function claimable(address holder) external view returns (uint256);
@@ -323,6 +327,18 @@ adds a signing scheme, a domain separator and a replay surface to save the
 borrower one transaction, and on Arc that transaction costs approximately
 nothing. The borrower calling `accept()` themselves is the cheapest thing to get
 right and the easiest thing for a third party to verify.
+
+**A note has exactly two privileged callers, and they do different jobs.** The
+vault records payments, because it is the only contract value moves through and
+therefore the only one that can honestly say a period was paid. The relay changes
+status and pushes distributions, because it is the only contract the agent can
+reach. Splitting them means a compromised agent key cannot fabricate a payment,
+and a bug in the vault cannot mark a note defaulted.
+
+**A cured period stays counted as missed.** `markSettled` on a `Missed` period
+sets it to `Cured`, not `Settled`, and the miss remains in the record. Silently
+un-counting it would make the reputation data claim something that did not
+happen — and that data is the product.
 
 **Distributions credit, they do not push.** `distribute()` raises a per-share
 accumulator scaled by `1e27`; it never iterates holders. So a distribution costs
@@ -458,7 +474,11 @@ Holds USDC between repayment and claim. One vault, notes segregated by `noteId`.
 
 ```solidity
 function repay(uint256 noteId, uint16 periodIndex) external payable;
+function release(uint256 noteId, uint256 amount) external;      // relay only
+function setRelay(address relay) external;                      // owner, set-once
 function balanceOf(uint256 noteId) external view returns (uint256);
+function paidOf(uint256 noteId, uint16 index) external view returns (uint256);
+function surplusOf(uint256 noteId) external view returns (uint256);
 
 event Repaid(
     uint256 indexed noteId,
@@ -478,7 +498,16 @@ event Repaid(
   single most interesting row in the dataset.
 - `onTime` is computed at repay time as `block.timestamp <= periodEnd + gracePeriod`.
   Computing it once, on-chain, keeps the subgraph from re-deriving it and drifting.
-- Overpayment is accepted and credited to the next unsettled period.
+- Overpayment cascades forward through later periods rather than piling up
+  against one already covered — a borrower paying two periods at once must not
+  then look delinquent on the second. Anything past the final period is held as
+  `surplusOf`, not pushed back: refunding mid-call is a value transfer to an
+  untrusted address bought for nothing.
+- `release` is the only way value leaves, only the relay may call it, and it
+  cannot name a recipient — value goes to the caller, which is the relay, which
+  splits it immediately between the note and the fee address fixed at issuance.
+- A plain send reverts. Value that arrived outside `repay` would be
+  unattributable to any note.
 
 ## ServicingRelay
 
@@ -522,6 +551,12 @@ event Defaulted(uint256 indexed noteId, uint16 periodsMissed, uint64 timestamp);
 
 Servicing fee is `amount * servicingFeeBps / 10_000`, paid to
 `terms.feeRecipient` — read from the note, never from `msg.sender`.
+
+**A fee recipient that rejects value cannot make a note unservicable.** The fee
+is pushed, and on failure credited to an `owedFees` ledger the recipient pulls
+from later. Settlement completes either way. Without this, an originator who
+named a contract that reverts on receive — deliberately or by accident — would
+freeze servicing for their own note and every holder in it.
 
 Delegation is the originator's to give: they arranged the loan and they are the
 party selling exposure to it, so they choose who services it. The borrower does

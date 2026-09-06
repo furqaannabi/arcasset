@@ -22,7 +22,12 @@ contract RWANote is ERC20, ReentrancyGuard {
     uint256 public immutable noteId;
     address public immutable originator;
     address public immutable borrower;
-    address public immutable distributor;
+    /// @dev Records payments. The vault is the only contract that moves value
+    /// in, and the only one trusted to say a period was paid.
+    address public immutable vault;
+    /// @dev Changes period and note status, and pushes distributions. The relay
+    /// is the only contract the agent can reach, and it cannot direct funds.
+    address public immutable relay;
     bytes32 public immutable documentHash;
     uint64 public immutable mintedAt;
 
@@ -41,37 +46,50 @@ contract RWANote is ERC20, ReentrancyGuard {
     mapping(address holder => uint256) private _snapshot;
     mapping(address holder => uint256) private _withdrawable;
 
-    struct Period {
+    struct PeriodState {
         uint256 paid;
         PeriodStatus status;
         uint64 settledAt;
     }
 
-    mapping(uint16 index => Period) private _periods;
+    mapping(uint16 index => PeriodState) private _periods;
+
+    uint16 public periodsSettled;
+    uint16 public periodsMissed;
+    /// @dev When the earliest still-uncured miss happened, for the cure window.
+    /// Cleared once nothing is outstanding, so a cured note cannot be defaulted
+    /// on the strength of a miss that was already made good.
+    uint64 public firstMissedAt;
 
     event Distributed(uint256 amount, uint256 accPerShare, uint256 totalDistributed);
+    event PaymentRecorded(uint16 indexed index, uint256 amount, uint256 periodPaid);
+    event PeriodStatusChanged(uint16 indexed index, PeriodStatus indexed status, uint64 timestamp);
     event Claimed(address indexed holder, uint256 amount);
     event StatusChanged(NoteStatus indexed from, NoteStatus indexed to, uint64 timestamp);
 
-    error NotDistributor();
+    error NotVault();
+    error NotRelay();
     error NothingToClaim();
     error PayoutFailed();
     error NoSupply();
     error BadPeriod();
     error NoteTerminal();
+    error PeriodAlreadySettled();
 
     constructor(
         uint256 noteId_,
         address originator_,
         Terms memory terms_,
         bytes32 documentHash_,
-        address distributor_
+        address vault_,
+        address relay_
     ) ERC20("ArcAsset Note", "NOTE") {
         noteId = noteId_;
         originator = originator_;
         borrower = terms_.borrower;
         documentHash = documentHash_;
-        distributor = distributor_;
+        vault = vault_;
+        relay = relay_;
         _terms = terms_;
         _status = NoteStatus.Active;
         mintedAt = uint64(block.timestamp);
@@ -106,11 +124,11 @@ contract RWANote is ERC20, ReentrancyGuard {
     }
 
     /// @notice Credit a repayment to holders pro-rata.
-    /// @dev Only the distributor — the servicing relay — can call this. It
+    /// @dev Only the relay can call this. It
     /// credits an accumulator; it never pushes value, so no recipient can
     /// revert a distribution for everyone else.
     function distribute() external payable {
-        if (msg.sender != distributor) revert NotDistributor();
+        if (msg.sender != relay) revert NotRelay();
         uint256 supply = totalSupply();
         if (supply == 0) revert NoSupply();
 
@@ -210,6 +228,90 @@ contract RWANote is ERC20, ReentrancyGuard {
     /// it cannot sit in the contract looking like holder value while being
     /// credited to nobody.
     receive() external payable {
-        revert NotDistributor();
+        revert NotRelay();
+    }
+
+    // -- period state, written by the vault and the relay -------------------
+
+    modifier onlyVault() {
+        if (msg.sender != vault) revert NotVault();
+        _;
+    }
+
+    modifier onlyRelay() {
+        if (msg.sender != relay) revert NotRelay();
+        _;
+    }
+
+    modifier live() {
+        if (_status == NoteStatus.Matured || _status == NoteStatus.Defaulted) {
+            revert NoteTerminal();
+        }
+        _;
+    }
+
+    /// @notice The vault credits a payment against a period.
+    function recordPayment(uint16 index, uint256 amount) external onlyVault live {
+        if (index >= _terms.periodCount) revert BadPeriod();
+        PeriodState storage p = _periods[index];
+        p.paid += amount;
+        emit PaymentRecorded(index, amount, p.paid);
+    }
+
+    /// @notice The relay marks a period settled once it has distributed for it.
+    function markSettled(uint16 index) external onlyRelay live {
+        PeriodState storage p = _periods[index];
+        if (p.status == PeriodStatus.Settled) revert PeriodAlreadySettled();
+
+        bool wasMissed = p.status == PeriodStatus.Missed;
+        p.status = wasMissed ? PeriodStatus.Cured : PeriodStatus.Settled;
+        p.settledAt = uint64(block.timestamp);
+        periodsSettled++;
+
+        if (wasMissed) {
+            // A cured period stays counted as missed — never silently un-count
+            // a miss, or the reputation data lies about what happened.
+            if (--periodsMissed == 0) firstMissedAt = 0;
+        }
+        emit PeriodStatusChanged(index, p.status, uint64(block.timestamp));
+
+        if (periodsSettled == _terms.periodCount) {
+            _setStatus(NoteStatus.Matured);
+        } else if (periodsMissed == 0 && _status == NoteStatus.Delinquent) {
+            _setStatus(NoteStatus.Active);
+        }
+    }
+
+    function markMissed(uint16 index) external onlyRelay live {
+        PeriodState storage p = _periods[index];
+        if (p.status == PeriodStatus.Settled || p.status == PeriodStatus.Cured) {
+            revert PeriodAlreadySettled();
+        }
+        if (p.status == PeriodStatus.Missed) revert PeriodAlreadySettled();
+
+        p.status = PeriodStatus.Missed;
+        periodsMissed++;
+        if (firstMissedAt == 0) firstMissedAt = uint64(block.timestamp);
+        emit PeriodStatusChanged(index, PeriodStatus.Missed, uint64(block.timestamp));
+        _setStatus(NoteStatus.Delinquent);
+    }
+
+    function markDefaulted() external onlyRelay live {
+        _setStatus(NoteStatus.Defaulted);
+    }
+
+    function periodStatus(uint16 index) external view returns (PeriodStatus) {
+        return _periods[index].status;
+    }
+
+    function periodPaid(uint16 index) external view returns (uint256) {
+        return _periods[index].paid;
+    }
+
+    function _setStatus(NoteStatus next) private {
+        NoteStatus prev = _status;
+        if (prev == next) return;
+        _status = next;
+        emit StatusChanged(prev, next, uint64(block.timestamp));
     }
 }
