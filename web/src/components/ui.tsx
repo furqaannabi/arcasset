@@ -190,3 +190,36 @@ export function Stat({
 export function Rule() {
   return <hr className="border-0 border-t border-line" />;
 }
+
+/**
+ * One page header shape everywhere: index and title on the left, the facts
+ * that qualify the page on the right. The meta row is where a screen says
+ * which chain and which contract it is talking about, so nobody has to guess
+ * whether they are looking at testnet.
+ */
+export function PageHeader({
+  index,
+  title,
+  lede,
+  meta,
+}: {
+  index: string;
+  title: ReactNode;
+  lede?: ReactNode;
+  meta?: ReactNode;
+}) {
+  return (
+    <header className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4">
+        <div className="max-w-2xl space-y-3">
+          <Eyebrow>{index}</Eyebrow>
+          <h1 className="text-2xl font-medium tracking-tight text-balance">{title}</h1>
+          {lede ? (
+            <p className="text-[13px] leading-relaxed text-muted">{lede}</p>
+          ) : null}
+        </div>
+        {meta ? <div className="flex flex-wrap items-center gap-2">{meta}</div> : null}
+      </div>
+    </header>
+  );
+}

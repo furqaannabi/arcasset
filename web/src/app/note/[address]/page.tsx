@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/states";
-import { Eyebrow } from "@/components/ui";
+import { PageHeader, Chip } from "@/components/ui";
+import { StackBadge } from "@/components/stack";
 import { shortAddress } from "@/lib/format";
 
 export default async function NotePage({
@@ -11,16 +12,15 @@ export default async function NotePage({
 
   return (
     <div className="space-y-10">
-      <header className="max-w-2xl space-y-3">
-        <Eyebrow>B / Note</Eyebrow>
-        <h1 className="font-mono text-2xl font-medium tracking-tight">
-          {shortAddress(address)}
-        </h1>
-        <p className="text-[13px] leading-relaxed text-muted">
-          Status, provenance, the offering, the period schedule, your position
-          and the servicing log.
-        </p>
-      </header>
+      <PageHeader
+        index="B / Note"
+        title={<span className="font-mono">{shortAddress(address)}</span>}
+        lede="Status, provenance, the offering, the period schedule, your position and the servicing log."
+        meta={<Chip>note contract</Chip>}
+      />
+      <div className="flex justify-end">
+        <StackBadge sponsor="graph" role="every figure on this page" muted />
+      </div>
       <EmptyState
         title="Not built yet"
         hint="The period schedule table is the product — see docs/05-web.md. Due Sep 9."

@@ -18,7 +18,8 @@ import {
   errorFor,
   type Terms,
 } from "@/lib/terms";
-import { Button, Field, Stat, inputClass as inputCls } from "./ui";
+import { Button, Field, SectionHead, Stat, inputClass as inputCls } from "./ui";
+import { StackBadge } from "./stack";
 import {
   annualisedRate,
   formatBps,
@@ -122,7 +123,9 @@ export function ProposeForm() {
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-      <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+      <form className="space-y-8" onSubmit={(e) => e.preventDefault()}>
+        <section className="space-y-4">
+          <SectionHead index="A" title="Counterparty" />
         <Field
           label="Borrower"
           hint="The counterparty who owes on this loan. Must be verified, and cannot be you."
@@ -137,6 +140,10 @@ export function ProposeForm() {
           />
         </Field>
 
+        </section>
+
+        <section className="space-y-4">
+          <SectionHead index="B" title="Agreement" />
         <Field
           label="Agreement documents"
           hint={
@@ -214,6 +221,14 @@ export function ProposeForm() {
           </ul>
         ) : null}
 
+        </section>
+
+        <section className="space-y-4">
+          <SectionHead
+            index="C"
+            title="Terms"
+            aside={<StackBadge sponsor="arc" role="native USDC" muted />}
+          />
         <Field
           label="Principal"
           hint="Face value of the loan, in USDC. This is also the token supply — you hold all of it at mint."
@@ -322,6 +337,8 @@ export function ProposeForm() {
           </Field>
         </div>
 
+        </section>
+
         <Button
           type="submit"
           tone="primary"
@@ -340,8 +357,8 @@ export function ProposeForm() {
         </p>
       </form>
 
-      <section className="space-y-3">
-        <h2 className="eyebrow">Schedule preview</h2>
+      <section className="space-y-4">
+        <SectionHead index="D" title="Schedule preview" />
         {schedule && terms ? (
           <>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-card border border-line bg-panel p-5">
