@@ -11,6 +11,7 @@ contract RWANoteTest is Test {
 
     address originator = makeAddr("originator");
     address borrower = makeAddr("borrower");
+    address vault = makeAddr("vault");
     address relay = makeAddr("relay");
     address feeRecipient = makeAddr("feeRecipient");
     address alice = makeAddr("alice");
@@ -21,7 +22,7 @@ contract RWANoteTest is Test {
 
     function setUp() public {
         vm.warp(1_757_000_000);
-        note = new RWANote(1, originator, _terms(), DOC, relay);
+        note = new RWANote(1, originator, _terms(), DOC, vault, relay);
         vm.deal(relay, type(uint128).max);
     }
 
@@ -60,7 +61,7 @@ contract RWANoteTest is Test {
     function test_distribute_onlyDistributor() public {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        vm.expectRevert(RWANote.NotDistributor.selector);
+        vm.expectRevert(RWANote.NotRelay.selector);
         note.distribute{value: 1 ether}();
     }
 

@@ -12,6 +12,7 @@ contract NoteFactoryTest is Test {
 
     address owner = makeAddr("owner");
     address queue = makeAddr("queue");
+    address vault = makeAddr("vault");
     address relay = makeAddr("relay");
     address originator = makeAddr("originator");
     address borrower = makeAddr("borrower");
@@ -40,42 +41,43 @@ contract NoteFactoryTest is Test {
         });
     }
 
-    function _setRelay() internal {
+    function _wire() internal {
         vm.prank(owner);
-        factory.setRelay(relay);
+        factory.setInfrastructure(vault, relay);
     }
 
     function test_deploy_onlyQueue() public {
-        _setRelay();
+        _wire();
         vm.prank(stranger);
         vm.expectRevert(NoteFactory.NotQueue.selector);
         factory.deploy(1, originator, _terms(), DOC);
     }
 
     /// Better to refuse than to deploy a note nothing can ever settle.
-    function test_deploy_revertsUntilRelayIsSet() public {
+    function test_deploy_revertsUntilWired() public {
         vm.prank(queue);
-        vm.expectRevert(NoteFactory.RelayNotSet.selector);
+        vm.expectRevert(NoteFactory.InfrastructureNotSet.selector);
         factory.deploy(1, originator, _terms(), DOC);
     }
 
-    function test_setRelay_onlyOwnerAndOnlyOnce() public {
+    function test_setInfrastructure_onlyOwnerAndOnlyOnce() public {
         vm.prank(stranger);
         vm.expectRevert(
             abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger)
         );
-        factory.setRelay(relay);
+        factory.setInfrastructure(vault, relay);
 
-        _setRelay();
+        _wire();
         assertEq(factory.relay(), relay);
+        assertEq(factory.vault(), vault);
 
         vm.prank(owner);
-        vm.expectRevert(NoteFactory.RelayAlreadySet.selector);
-        factory.setRelay(makeAddr("other relay"));
+        vm.expectRevert(NoteFactory.InfrastructureAlreadySet.selector);
+        factory.setInfrastructure(vault, makeAddr("other relay"));
     }
 
     function test_deploy_producesAWorkingNote() public {
-        _setRelay();
+        _wire();
         vm.prank(queue);
         (uint256 noteId, address noteAddr) = factory.deploy(7, originator, _terms(), DOC);
 
@@ -88,13 +90,14 @@ contract NoteFactoryTest is Test {
         assertEq(note.balanceOf(originator), 100_000 ether);
         assertEq(note.originator(), originator);
         assertEq(note.borrower(), borrower);
-        assertEq(note.distributor(), relay);
+        assertEq(note.relay(), relay);
+        assertEq(note.vault(), vault);
         assertEq(note.documentHash(), DOC);
     }
 
     /// The UI routes to the note before the transaction lands.
     function test_predictNote_matchesTheDeployedAddress() public {
-        _setRelay();
+        _wire();
         Terms memory t = _terms();
         address predicted = factory.predictNote(7, originator, t, DOC);
 
@@ -104,7 +107,7 @@ contract NoteFactoryTest is Test {
     }
 
     function test_deployTwiceForOneOriginator() public {
-        _setRelay();
+        _wire();
         vm.startPrank(queue);
         (, address a) = factory.deploy(1, originator, _terms(), DOC);
         (, address b) = factory.deploy(2, originator, _terms(), DOC);
