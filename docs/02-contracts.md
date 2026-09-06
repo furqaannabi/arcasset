@@ -400,6 +400,7 @@ function relist(uint256 noteId, uint16 priceBps) external;                // rep
 function delist(uint256 noteId, uint256 amount) external;                 // pull unsold
 function buy(uint256 noteId, uint256 amount) external payable;
 
+function sweepEscrow(uint256 noteId) external returns (uint256);  // anyone
 function listingOf(uint256 noteId) external view returns (Listing memory);
 function costOf(uint256 noteId, uint256 amount) external view returns (uint256);
 
@@ -407,6 +408,7 @@ event Listed(uint256 indexed noteId, address indexed originator, uint256 amount,
 event Repriced(uint256 indexed noteId, uint16 oldPriceBps, uint16 newPriceBps);
 event Delisted(uint256 indexed noteId, uint256 amount, uint256 remaining);
 event Bought(uint256 indexed noteId, address indexed buyer, uint256 amount, uint256 paid, uint16 priceBps);
+event EscrowSwept(uint256 indexed noteId, address indexed originator, uint256 amount);
 ```
 
 **Priced in basis points of face value, not in currency.** `priceBps = 9700`
@@ -416,6 +418,23 @@ and it keeps the price a `uint16` instead of a per-token rate that would be
 awkward at 18 decimals. Cost is `amount * priceBps / 10_000`. Above par is
 allowed and capped at `MAX_PRICE_BPS = 20_000`; a note whose coupon is generous
 can legitimately trade over 100.
+
+**Escrowed tokens keep earning, and somebody has to collect.** While a slice
+sits unsold, this contract is the holder of record, so coupons on it accrue to
+the Offering — an address with no claim function would strand them, and strand
+them in a way nobody notices until maturity. `sweepEscrow` claims and forwards
+to the note's own originator. It is permissionless because the destination is
+fixed: there is nothing for a caller to redirect.
+
+This was not in the first draft of this spec either. It is the same shape of
+omission as the mint window: not a missing check, a missing consequence of
+holding something over time.
+
+**Listing needs an ERC-20 approval of the note.** That is not a contradiction of
+"no approve step" elsewhere — that claim is about the *settlement currency*,
+which is native and needs no allowance. The note is an ERC-20 and moving it into
+escrow works the ordinary way. Two different assets, two different mechanics;
+worth stating because the UI will otherwise inherit the wrong assumption.
 
 **Tokens are escrowed, so a buy cannot fail to deliver.** `list` transfers the
 tokens into the Offering. The originator can put up any fraction — 25% of supply
