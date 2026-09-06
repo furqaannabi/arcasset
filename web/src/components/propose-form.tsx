@@ -18,6 +18,7 @@ import {
   errorFor,
   type Terms,
 } from "@/lib/terms";
+import { Button, Field, Stat, inputClass as inputCls } from "./ui";
 import {
   annualisedRate,
   formatBps,
@@ -149,7 +150,7 @@ export function ProposeForm() {
             type="file"
             multiple
             accept="application/pdf,image/png,image/jpeg"
-            className={`${inputCls} file:mr-3 file:rounded file:border-0 file:bg-black/5 file:px-2 file:py-1 file:text-xs dark:file:bg-white/10`}
+            className={`${inputCls} file:mr-3 file:rounded file:border-0 file:bg-raised file:px-2 file:py-1 file:text-xs file:text-muted`}
             onChange={async (e) => {
               const picked = Array.from(e.target.files ?? []);
               e.target.value = "";
@@ -189,19 +190,19 @@ export function ProposeForm() {
             {docs.map((d) => (
               <li
                 key={d.contentHash}
-                className="flex items-center gap-2 rounded border border-black/10 px-2 py-1 dark:border-white/15"
+                className="flex items-center gap-2 rounded-card border border-line px-2.5 py-1.5"
               >
                 <span className="truncate">{d.filename}</span>
-                <span className="ml-auto shrink-0 opacity-50">
+                <span className="ml-auto shrink-0 text-faint">
                   {(d.byteSize / 1024).toFixed(0)} KB
                 </span>
-                <code className="shrink-0 opacity-50">
+                <code className="shrink-0 text-faint">
                   {d.contentHash.slice(0, 8)}…
                 </code>
                 <button
                   type="button"
                   aria-label={`Remove ${d.filename}`}
-                  className="shrink-0 opacity-50 hover:opacity-100"
+                  className="shrink-0 text-faint hover:text-ink"
                   onClick={() =>
                     setDocs((prev) => prev.filter((x) => x.contentHash !== d.contentHash))
                   }
@@ -243,7 +244,7 @@ export function ProposeForm() {
               inputMode="numeric"
               onChange={(e) => set("couponBps", e.target.value)}
             />
-            <span className="text-xs opacity-60">bps</span>
+            <span className="eyebrow">bps</span>
           </div>
         </Field>
 
@@ -321,29 +322,29 @@ export function ProposeForm() {
           </Field>
         </div>
 
-        <button
+        <Button
           type="submit"
+          tone="primary"
+          full
           disabled
-          title="PartyRegistry and IssuanceQueue are not deployed yet"
-          className="w-full rounded border border-current px-4 py-2 text-sm font-medium opacity-40"
+          title="The seal-then-propose path is not wired up yet"
         >
           {blocked ? "Fix the errors above" : "Seal and propose"}
-        </button>
-        <p className="text-xs opacity-60">
-          Proposing is disabled until <code>PartyRegistry</code> and{" "}
-          <code>IssuanceQueue</code> are deployed, and uploads until the document
-          service exists. Hashing is live and runs in your browser, so the
-          manifest hash shown here is the one that will go on-chain. Sealing will
-          upload these files so the admin can read them — a proposal still needs
-          the borrower to accept and an admin to approve before anything mints.
+        </Button>
+        <p className="text-[12px] leading-relaxed text-muted">
+          Submitting is not wired up yet: sealing the draft has to upload these
+          files and return the manifest hash before the transaction can be
+          built. Hashing is live and runs in your browser, so the hash shown
+          above is the one that will go on-chain. A proposal still needs the
+          borrower to accept and an admin to approve before anything mints.
         </p>
       </form>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium">Schedule preview</h2>
+        <h2 className="eyebrow">Schedule preview</h2>
         {schedule && terms ? (
           <>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-black/10 p-4 text-sm dark:border-white/15">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-card border border-line bg-panel p-5">
               <Stat label="Coupon per period" value={formatUsdc(schedule.couponPerPeriod)} />
               <Stat label="Total coupons" value={formatUsdc(schedule.totalCoupons)} />
               <Stat label="Total repayment" value={formatUsdc(schedule.totalRepayment)} />
@@ -352,33 +353,33 @@ export function ProposeForm() {
               <Stat label="Implied APR" value={formatRate(apr)} />
             </dl>
 
-            <p className="text-xs opacity-60">
+            <p className="text-[12px] leading-relaxed text-muted">
               Dates assume funding closes now. The real schedule starts when the
               note actually activates, so these shift — the shape and the amounts
               do not.
             </p>
 
-            <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
+            <div className="overflow-x-auto rounded-card border border-line">
               <table className="w-full text-sm">
-                <thead className="border-b border-black/10 text-left text-xs uppercase tracking-wide opacity-60 dark:border-white/15">
+                <thead className="border-b border-line text-left">
                   <tr>
-                    <th className="p-2 font-medium">#</th>
-                    <th className="p-2 font-medium">Ends</th>
-                    <th className="p-2 text-right font-medium">Coupon</th>
-                    <th className="p-2 text-right font-medium">Principal</th>
-                    <th className="p-2 text-right font-medium">Due</th>
+                    <th className="eyebrow p-2.5">#</th>
+                    <th className="eyebrow p-2.5">Ends</th>
+                    <th className="eyebrow p-2.5 text-right">Coupon</th>
+                    <th className="eyebrow p-2.5 text-right">Principal</th>
+                    <th className="eyebrow p-2.5 text-right">Due</th>
                   </tr>
                 </thead>
                 <tbody>
                   {schedule.rows.map((r) => (
-                    <tr key={r.index} className="border-b border-black/5 last:border-0 dark:border-white/10">
-                      <td className="p-2 tabular-nums opacity-60">{r.index + 1}</td>
-                      <td className="p-2 whitespace-nowrap">{formatTimestamp(r.end)}</td>
-                      <td className="p-2 text-right tabular-nums">{formatUsdc(r.coupon)}</td>
-                      <td className="p-2 text-right tabular-nums opacity-60">
+                    <tr key={r.index} className="border-b border-line last:border-0">
+                      <td className="p-2.5 font-mono text-[11px] tnum text-faint">{r.index + 1}</td>
+                      <td className="p-2.5 font-mono text-[12px] whitespace-nowrap text-muted">{formatTimestamp(r.end)}</td>
+                      <td className="p-2.5 text-right font-mono text-[12px] tnum">{formatUsdc(r.coupon)}</td>
+                      <td className="p-2.5 text-right font-mono tnum text-muted">
                         {r.principalDue > 0n ? formatUsdc(r.principalDue) : "—"}
                       </td>
-                      <td className="p-2 text-right font-medium tabular-nums">
+                      <td className="p-2.5 text-right font-mono text-[12px] tnum text-ink">
                         {formatUsdc(r.due)}
                       </td>
                     </tr>
@@ -388,52 +389,16 @@ export function ProposeForm() {
             </div>
           </>
         ) : (
-          <div className="rounded-lg border border-dashed border-black/15 p-8 text-center text-sm opacity-70 dark:border-white/20">
+          <div className="rounded-card border border-dashed border-line-strong p-10 text-center text-[13px] text-muted">
             {parseError ?? "Fix the errors on the left to see the schedule."}
           </div>
         )}
         {!isConnected ? (
-          <p className="text-xs opacity-60">
+          <p className="text-[12px] leading-relaxed text-muted">
             Connect a wallet to propose. The preview works without one.
           </p>
         ) : null}
       </section>
-    </div>
-  );
-}
-
-const inputCls =
-  "w-full rounded border border-black/15 bg-transparent px-3 py-2 text-sm dark:border-white/20";
-
-function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="text-sm font-medium">{label}</span>
-      {children}
-      {error ? (
-        <span className="block text-xs text-red-600 dark:text-red-400">{error}</span>
-      ) : hint ? (
-        <span className="block text-xs opacity-60">{hint}</span>
-      ) : null}
-    </label>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs opacity-60">{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
     </div>
   );
 }
