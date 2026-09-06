@@ -6,14 +6,20 @@ import { publicClientFor, walletClientFor } from "./chain/client";
 import { ChainExecutor } from "./agent/executor";
 import { RpcNoteSource } from "./agent/source";
 import { AgentRunner } from "./agent/runner";
+import { intelRoutes } from "./intel/routes";
 
 const config = loadConfig();
 const deployment = loadDeployment(config.chainId);
 const publicClient = publicClientFor(config.chainId, config.rpcUrl);
 
 let runner: AgentRunner | null = null;
-if (config.agentKey) {
-  const wallet = walletClientFor(config.chainId, config.rpcUrl, config.agentKey);
+// The same signer settles x402 payments and services notes. Both are hot keys
+// doing bounded work; splitting them is a deployment decision, not a code one.
+const wallet = config.agentKey
+  ? walletClientFor(config.chainId, config.rpcUrl, config.agentKey)
+  : null;
+
+if (config.agentKey && wallet) {
   const executor = new ChainExecutor(publicClient, wallet, deployment.ServicingRelay);
   const source = new RpcNoteSource(
     publicClient,
@@ -69,6 +75,8 @@ app.get("/health", async (c) => {
         },
   });
 });
+
+app.route("/intel", intelRoutes(config, publicClient, wallet, deployment.NoteFactory));
 
 /** The decision trace. In a demo this log is the agent. */
 app.get("/agent/log", (c) => {

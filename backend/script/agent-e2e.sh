@@ -37,7 +37,7 @@ for _ in $(seq 1 30); do cast chain-id --rpc-url $RPC >/dev/null 2>&1 && break; 
 for a in $DEPLOYER $ORIG $BORR $AGENT; do fund "$a"; done
 
 step "Deploying"
-(cd "$ROOT/contracts" && DEPLOYER_PRIVATE_KEY=$DEPLOYER_PK forge script script/Deploy.s.sol:Deploy \
+(cd "$ROOT/contracts" && ALLOW_OVERWRITE=true DEPLOYER_PRIVATE_KEY=$DEPLOYER_PK forge script script/Deploy.s.sol:Deploy \
   --rpc-url $RPC --broadcast >/dev/null 2>&1) || { echo "deploy failed"; exit 1; }
 J="$ROOT/contracts/deployments/31337.json"
 g() { python3 -c "import json;print(json.load(open('$J'))['$1'])"; }

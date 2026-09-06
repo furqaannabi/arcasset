@@ -49,3 +49,23 @@ export const vaultAbi = [
   { type: "function", name: "paidOf", stateMutability: "view", inputs: [{ type: "uint256" }, { type: "uint16" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "uint256" }] },
 ] as const;
+
+/** Circle FiatToken. Only the EIP-3009 surface x402 settlement needs. */
+export const usdcAbi = [
+  { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+  { type: "function", name: "DOMAIN_SEPARATOR", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+  {
+    type: "function", name: "authorizationState", stateMutability: "view",
+    inputs: [{ type: "address" }, { type: "bytes32" }], outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function", name: "transferWithAuthorization", stateMutability: "nonpayable",
+    inputs: [
+      { name: "from", type: "address" }, { name: "to", type: "address" },
+      { name: "value", type: "uint256" }, { name: "validAfter", type: "uint256" },
+      { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" },
+      { name: "v", type: "uint8" }, { name: "r", type: "bytes32" }, { name: "s", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+] as const;
