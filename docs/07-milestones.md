@@ -4,6 +4,15 @@
 
 ETHOnline 2026, Sep 4–13. Two people: Furqaan, Apurva. Today is **Sep 5**.
 
+## Verifying the contracts
+
+`contracts/script/e2e.sh` drives a live Anvil node with `cast` — deploy, verify
+both parties, propose, accept, approve, mint, list, buy, repay, settle, claim,
+miss, cure, mature — and asserts 37 conditions including every revert that
+should happen. `forge test` proves the contracts; this proves the deployment,
+the wiring, and the sequence a person actually types. Run it before the demo
+rehearsal, not on the day.
+
 ## Scope added on Sep 5
 
 Three decisions on day 2 roughly doubled the build, and pretending otherwise is
@@ -42,7 +51,7 @@ built against fixed interfaces, not against each other's progress.
 | **Sep 4** | Scaffold, README, stack decision | ✅ committed |
 | **Sep 5** | Specs (this folder). Foundry + Next.js + subgraph skeletons compile and run empty | ✅ Specs done, `web/` scaffolded and green (typecheck, lint, build, 9 tests). ⚠️ `contracts/` and `subgraph/` skeletons still missing — carry to Sep 6 |
 | **Sep 6** | `PartyRegistry`, `IssuanceQueue` (propose/accept/approve/mint), `NoteFactory`, `RWANote` funding path. Web: `/proposal/[id]` | A proposal can be accepted by a second wallet, approved by a third, minted, and funded on Anvil from the UI |
-| **Sep 7** | `Offering` (list/reprice/delist/buy), `RepaymentVault`, `ServicingRelay`, claims. Guard tests from [02](02-contracts.md#guards--every-one-of-these-is-a-test) | Full lifecycle passes in Foundry: issue → fund → repay → settle → claim |
+| **Sep 7** | ✅ done Sep 6. `Offering`, `RepaymentVault`, `ServicingRelay`, claims. Guard tests from [02](02-contracts.md#guards--every-one-of-these-is-a-test) | Full lifecycle passes in Foundry: issue → fund → repay → settle → claim |
 | **Sep 8** | Backend skeleton: Prisma schema, Postgres, R2, wallet sessions, document upload + seal. Subgraph: all entities and handlers, local `graph-node` | Every entity in [03](03-subgraph.md#entities) populates from a seeded fixture run |
 | **Sep 9** | Agent decision loop + safety rails. Document review UI on `/proposal/[id]`. `/note/[address]` | Agent settles a period unattended on Anvil; `/health` reports lag correctly |
 | **Sep 10** | Deploy to Arc testnet, subgraph to Studio, seed history | Real notes with real repayment history are indexed and visible |
