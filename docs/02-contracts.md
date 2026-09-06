@@ -245,6 +245,14 @@ event NoteIssued(
 
 Notes are deployed with CREATE2 on `keccak256(originator, proposalId)` so the
 address is known before the transaction lands — the UI shows it optimistically.
+`predictNote(...)` returns that address, and a test asserts it matches what
+`deploy` actually produces.
+
+**`setRelay` is set-once.** The relay needs the factory's address and the factory
+needs the relay's, so one edge has to be wired after deployment. Set-once means
+that wiring is a deployment step rather than a standing lever over where money
+goes. `deploy` reverts while the relay is unset: better to refuse than to
+produce a note nothing can ever settle.
 
 A note opens directly in `Active`, and the originator receives **100% of the
 supply**.
@@ -268,6 +276,7 @@ ERC-20 where one token is one unit of principal contributed. Balance is a
 holder's pro-rata share; transfers move future claims with it.
 
 ```solidity
+function distribute() external payable;         // relay only; credits the accumulator
 function claim() external returns (uint256);    // sends native USDC to msg.sender
 function claimable(address holder) external view returns (uint256);
 
@@ -278,6 +287,7 @@ function period(uint16 index) external view returns (
 );
 function currentPeriod() external view returns (uint16);
 
+event Distributed(uint256 amount, uint256 accPerShare, uint256 totalDistributed);
 event Claimed(address indexed holder, uint256 amount);
 event StatusChanged(NoteStatus indexed from, NoteStatus indexed to, uint64 timestamp);
 ```
@@ -314,9 +324,24 @@ borrower one transaction, and on Arc that transaction costs approximately
 nothing. The borrower calling `accept()` themselves is the cheapest thing to get
 right and the easiest thing for a third party to verify.
 
-**Rounding.** Pro-rata claims round *down* per holder. The dust remainder stays
-in the vault and is swept into the final period's distribution. Rounding never
-lets the sum of claims exceed the balance.
+**Distributions credit, they do not push.** `distribute()` raises a per-share
+accumulator scaled by `1e27`; it never iterates holders. So a distribution costs
+the same for two holders or two thousand, and no single hostile recipient can
+revert one for everybody else. Only the relay may call it, and a plain send to a
+note reverts — value that arrived outside `distribute()` would sit there looking
+like holder value while being credited to nobody.
+
+**Rounding.** Pro-rata claims round *down* per holder, and the remainder is held
+as `dust` and folded into the *next* distribution rather than being stranded.
+The invariant is exact, not approximate: after any distribution,
+`claimable(originator) + dust == amount` when there is a single holder, and
+across any number of distributions the sum of every claim plus `dust` equals
+everything ever distributed. Two fuzz tests assert it.
+
+`totalDistributed` and `totalClaimed` are the authoritative figures, never
+`address(this).balance` — value can be force-sent, so a balance-derived
+invariant is griefable. There is a test that force-sending value changes nobody's
+`claimable`.
 
 **Native value handling.** Settling in the native asset rather than an ERC-20
 buys us simplicity — no approvals, no allowance race, no fee-on-transfer or

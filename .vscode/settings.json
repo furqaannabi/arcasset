@@ -1,0 +1,12 @@
+{
+  // The editor's Solidity extension ships its own solc and defaults to
+  // "latest". Mirror contracts/foundry.toml here so the language server
+  // reports the same errors forge does, on the same compiler.
+  "solidity.defaultCompiler": "remote",
+  "solidity.compileUsingRemoteVersion": "v0.8.24+commit.e11b9ed9",
+  "solidity.evmVersion": "cancun",
+  "solidity.compilerOptimization": 200,
+  "solidity.viaIR": false,
+  "solidity.monoRepoSupport": true,
+  "solidity.formatter": "forge"
+}
