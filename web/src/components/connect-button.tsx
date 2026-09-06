@@ -3,6 +3,7 @@
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { CHAIN } from "@/lib/chain";
 import { shortAddress } from "@/lib/format";
+import { Button, Dot } from "./ui";
 
 export function ConnectButton() {
   const { address, isConnected, chainId } = useAccount();
@@ -13,35 +14,35 @@ export function ConnectButton() {
   if (!isConnected) {
     const connector = connectors[0];
     return (
-      <button
+      <Button
+        tone="primary"
         disabled={!connector || isPending}
         onClick={() => connector && connect({ connector })}
-        className="rounded border border-current px-3 py-1.5 text-sm font-medium disabled:opacity-50"
       >
         {isPending ? "Connecting…" : "Connect wallet"}
-      </button>
+      </Button>
     );
   }
 
   // Wrong network blocks, it does not fail silently — docs/05-web.md.
   if (chainId !== CHAIN.id) {
     return (
-      <button
+      <Button
+        tone="secondary"
+        className="border-warn/50 text-warn"
         onClick={() => switchChain({ chainId: CHAIN.id })}
-        className="rounded border border-amber-500 px-3 py-1.5 text-sm font-medium text-amber-600"
       >
         Switch to {CHAIN.name}
-      </button>
+      </Button>
     );
   }
 
   return (
-    <button
-      onClick={() => disconnect()}
-      title={address}
-      className="rounded border border-current px-3 py-1.5 font-mono text-sm"
-    >
-      {address ? shortAddress(address) : ""}
-    </button>
+    <Button tone="secondary" title={address} onClick={() => disconnect()}>
+      <span className="inline-flex items-center gap-2">
+        <Dot tone="accent" />
+        {address ? shortAddress(address) : ""}
+      </span>
+    </Button>
   );
 }
