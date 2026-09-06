@@ -342,7 +342,18 @@ each, sort, concatenate, hash again, compare to the on-chain value. The backend
 is not trusted to report the hash truthfully — it is checkable. A document hash
 nobody can independently verify is decoration.
 
-#### Server-side hashing
+#### Storage has a local fallback
+
+With R2 credentials set, documents go to R2 and reads are served as 60-second
+presigned URLs. Without them, storage falls back to the filesystem and reads
+stream through the API under exactly the same access check.
+
+The fallback exists so the review flow can be built and demonstrated without
+credentials, and it degrades honestly: local storage cannot mint a signed URL
+and says so rather than returning a link that does not work. What it does not do
+is relax who may read — that check is in the route, not in the storage.
+
+### Server-side hashing
 
 The client sends a hash it computed; the server hashes the bytes it actually
 received and **stores its own**. If they disagree the upload is rejected with

@@ -3,3 +3,6 @@ node_modules/
 .env.*
 !.env.example
 generated/
+
+# Local document storage, used when R2 credentials are absent.
+.documents/

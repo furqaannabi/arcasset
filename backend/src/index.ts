@@ -7,6 +7,8 @@ import { ChainExecutor } from "./agent/executor";
 import { RpcNoteSource } from "./agent/source";
 import { AgentRunner } from "./agent/runner";
 import { intelRoutes } from "./intel/routes";
+import { documentRoutes } from "./documents/routes";
+import { storageFromEnv } from "./documents/storage";
 
 const config = loadConfig();
 const deployment = loadDeployment(config.chainId);
@@ -55,6 +57,7 @@ app.get("/health", async (c) => {
     ok: true,
     database: db ? "connected" : "unreachable",
     chain: { id: config.chainId, head: block === null ? null : Number(block) },
+    documents: { storage: storage.kind, admins: admins.length },
     contracts: deployment,
     agent: runner
       ? {
@@ -76,7 +79,11 @@ app.get("/health", async (c) => {
   });
 });
 
+const storage = storageFromEnv();
+const admins = (process.env["ADMIN_ADDRESSES"] ?? "").split(",").map((a) => a.trim()).filter(Boolean);
+
 app.route("/intel", intelRoutes(config, publicClient, wallet, deployment.NoteFactory));
+app.route("/documents", documentRoutes(storage, admins));
 
 /** The decision trace. In a demo this log is the agent. */
 app.get("/agent/log", (c) => {
