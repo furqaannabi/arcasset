@@ -538,7 +538,7 @@ system.
 | `AGENT_PRIVATE_KEY` | Signer for the servicing loop. `.env` only, never committed |
 | `TICK_INTERVAL_MS` | Default 60000. The demo runs at 5000 to make the loop visible |
 | `MAX_ACTIONS_PER_TICK` | Default 25 |
-| `MAX_LAG_BLOCKS` | Default 200 |
+| `MAX_LAG_BLOCKS` | Default 200. Arc testnet averages ~0.51s blocks, so this is about 100 seconds of tolerated lag — measured, not guessed |
 | `MIN_GAS_BALANCE` | Default 0.01, native units |
 | `DEFAULT_DRY_RUN` | Default true. Flip only with a human present |
 

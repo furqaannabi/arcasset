@@ -24,13 +24,19 @@ import {MockVerifier} from "./MockVerifier.sol";
 /// deploy a factory no queue can ever call.
 contract Deploy is Script {
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address deployer = vm.addr(pk);
+        // A keystore passed via --account/--keystore is picked up by forge
+        // itself; DEPLOYER_PRIVATE_KEY is the fallback for local Anvil runs.
+        uint256 pk = vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0));
+        address deployer = pk == 0 ? msg.sender : vm.addr(pk);
         address owner = vm.envOr("OWNER", deployer);
         address admin = vm.envOr("ADMIN", deployer);
         address verifierAddr = vm.envOr("VERIFIER", address(0));
 
-        vm.startBroadcast(pk);
+        if (pk == 0) {
+            vm.startBroadcast();
+        } else {
+            vm.startBroadcast(pk);
+        }
 
         if (verifierAddr == address(0)) {
             verifierAddr = address(new MockVerifier());

@@ -173,7 +173,16 @@ Money is `bigint` integer arithmetic from the contract to the render call, and d
 
 ## Deployed — Arc testnet (chain 5042002)
 
-Nothing yet. Contracts are due Sep 6–7 and go to testnet Sep 10; addresses land here and in `deployments/arc-testnet.json`, which is the single source every package reads. Nothing hardcodes an address.
+Not yet deployed. All six contracts are written, tested (115 Foundry tests) and verified end-to-end against a live Anvil node by `contracts/script/e2e.sh`, which runs the whole flow — deploy, verify parties, propose, accept, approve, mint, list, buy, repay, settle, claim, miss, cure, mature — and asserts 37 conditions.
+
+Deploying is one command once a funded signer exists:
+
+```bash
+cd contracts
+./script/deploy-testnet.sh --keystore ~/.foundry/keystores/<name>
+```
+
+It refuses to run unless the RPC reports chain 5042002, verifies on Blockscout as it goes, and writes `deployments/5042002.json` — the single source every package reads. Nothing hardcodes an address.
 
 | Contract | Address |
 |---|---|
