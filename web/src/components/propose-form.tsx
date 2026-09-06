@@ -20,6 +20,7 @@ import {
 } from "@/lib/terms";
 import { Button, Field, SectionHead, Stat, inputClass as inputCls } from "./ui";
 import { StackBadge } from "./stack";
+import { ScheduleChart } from "./schedule-chart";
 import {
   annualisedRate,
   formatBps,
@@ -361,19 +362,43 @@ export function ProposeForm() {
         <SectionHead index="D" title="Schedule preview" />
         {schedule && terms ? (
           <>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-card border border-line bg-panel p-5">
-              <Stat label="Coupon per period" value={formatUsdc(schedule.couponPerPeriod)} />
-              <Stat label="Total coupons" value={formatUsdc(schedule.totalCoupons)} />
-              <Stat label="Total repayment" value={formatUsdc(schedule.totalRepayment)} />
-              <Stat label="Servicing fees" value={formatUsdc(schedule.servicingFeeTotal)} />
-              <Stat label="Maturity" value={formatTimestamp(schedule.maturity)} />
-              <Stat label="Implied APR" value={formatRate(apr)} />
-            </dl>
+            <div className="rounded-card border border-line bg-panel">
+              <div className="flex flex-wrap items-end justify-between gap-6 px-5 pt-5">
+                <div>
+                  <p className="eyebrow">Total repayment</p>
+                  <p className="mt-1.5 font-mono text-[32px] leading-none tracking-tight tnum">
+                    {formatUsdc(schedule.totalRepayment)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="eyebrow">Implied APR</p>
+                  <p className="mt-1.5 font-mono text-[32px] leading-none tracking-tight tnum text-accent">
+                    {formatRate(apr)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-5 pt-6 pb-5">
+                <ScheduleChart schedule={schedule} />
+              </div>
+
+              <dl className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-4">
+                {[
+                  ["Coupon / period", formatUsdc(schedule.couponPerPeriod)],
+                  ["Total coupons", formatUsdc(schedule.totalCoupons)],
+                  ["Servicing fees", formatUsdc(schedule.servicingFeeTotal)],
+                  ["Maturity", formatTimestamp(schedule.maturity)],
+                ].map(([label, value]) => (
+                  <div key={label} className="bg-panel px-4 py-3.5">
+                    <Stat label={label} value={value} />
+                  </div>
+                ))}
+              </dl>
+            </div>
 
             <p className="text-[12px] leading-relaxed text-muted">
-              Dates assume funding closes now. The real schedule starts when the
-              note actually activates, so these shift — the shape and the amounts
-              do not.
+              Dates assume the note mints now. The real schedule starts when it
+              actually does, so these shift — the shape and the amounts do not.
             </p>
 
             <div className="overflow-x-auto rounded-card border border-line">
