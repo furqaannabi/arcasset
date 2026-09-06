@@ -23,6 +23,15 @@ optimizer_runs = 200
 # is unsure about rather than discovering it in a test.
 deny = "warnings"
 
+[lint]
+# Every deadline in this system is measured in minutes to days — acceptance
+# windows, grace periods, cure windows, coupon periods. A validator shifting
+# block.timestamp by a few seconds cannot move any of them across a boundary
+# that matters, and the alternative (block numbers) is worse: block time on Arc
+# is not a constant we control, so a schedule denominated in blocks would drift
+# against the schedule in the signed agreement.
+exclude_lints = ["block-timestamp"]
+
 [fmt]
 line_length = 100
 tab_width = 4

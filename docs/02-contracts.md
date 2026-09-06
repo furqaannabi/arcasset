@@ -102,15 +102,20 @@ struct Proposal {
     uint64  approvedAt;
 }
 
+uint64 constant MINT_WINDOW = 7 days;
+
 function propose(Terms calldata terms, bytes32 documentHash, string calldata documentURI)
     external returns (uint256 proposalId);
 function accept(uint256 proposalId) external;                    // borrower only
 function approve(uint256 proposalId) external;                   // admin only
 function reject(uint256 proposalId, string calldata reason) external;  // admin only
-function mint(uint256 proposalId) external returns (uint256 noteId, address note);
-function expire(uint256 proposalId) external;                    // anyone, past acceptDeadline
+function mint(uint256 proposalId) external returns (uint256 noteId, address note);  // originator only
+function expire(uint256 proposalId) external;                    // anyone, once stale
+function setAdmin(address admin, bool allowed) external;         // owner only
 
 function digestOf(uint256 proposalId) external view returns (bytes32);
+function proposalOf(uint256 proposalId) external view returns (Proposal memory);
+function statusOf(uint256 proposalId) external view returns (ProposalStatus);
 
 event Proposed(uint256 indexed proposalId, address indexed originator,
                address indexed borrower, bytes32 digest, string documentURI);
@@ -118,6 +123,8 @@ event Accepted(uint256 indexed proposalId, address indexed borrower, uint64 time
 event Approved(uint256 indexed proposalId, address indexed admin, bytes32 digest, uint64 timestamp);
 event Rejected(uint256 indexed proposalId, address indexed admin, string reason);
 event Expired(uint256 indexed proposalId);
+event Minted(uint256 indexed proposalId, uint256 indexed noteId, address indexed note);
+event AdminSet(address indexed admin, bool allowed);
 ```
 
 **Order is enforced, and the order is deliberate.** `accept` requires
@@ -181,9 +188,33 @@ would make the demo unmintable — the demo settles a period on camera, which
 needs periods measured in minutes. A testnet-only override was the alternative
 and is worse: it means demoing code that differs from the code being judged.
 
-`expire` is permissionless and applies once `acceptDeadline` passes without
-acceptance, so an originator cannot leave an unanswered claim about someone
-hanging over them indefinitely.
+**An approval goes stale after `MINT_WINDOW`.** Minting is the originator's
+call — they chose to propose, so they choose when the clock starts — but not
+indefinitely. Period 0 begins at mint, so the borrower agreed to a *schedule
+shape*, never to a start date. Without a bound an originator could hold an
+approval for months and then start a counterparty's obligations at a moment of
+their own choosing, against terms accepted long before. Seven days from approval,
+and after that the proposal expires and has to go round again.
+
+This was not in the first draft of this spec. It surfaced while implementing:
+every other deadline had a bound and this one did not, which is the shape a
+fairness bug usually takes — not a missing check, a missing clock.
+
+`expire` is permissionless and covers both stale states: a proposal nobody
+accepted past `acceptDeadline`, and an approval nobody minted past
+`MINT_WINDOW`. Permissionless because an originator must not be able to leave an
+unanswered claim about somebody hanging over them, and an approval must not sit
+forever waiting to start someone's clock.
+
+**Revocation is re-checked at every gate.** `accept` re-checks the borrower and
+`mint` re-checks both parties, because revocation blocks *new* issuance and a
+proposal in flight is exactly that. A proposal belonging to a revoked party goes
+stale rather than reverting forever, and `expire` clears it.
+
+**Admins are a set, not one address** — `setAdmin`, owner-managed, to match
+`ADMIN_ADDRESSES` in [04](04-backend.md#configuration). It is still
+centralisation and calling it a set does not soften that; it means a lost key
+does not halt issuance while a second one exists.
 
 ## NoteFactory
 
@@ -192,7 +223,7 @@ proposal, and has no other entry point — so there is no path that produces a
 note nobody approved.
 
 ```solidity
-function deploy(uint256 proposalId, Terms calldata terms, bytes32 documentHash)
+function deploy(uint256 proposalId, address originator, Terms calldata terms, bytes32 documentHash)
     external returns (uint256 noteId, address note);   // onlyQueue
 
 function noteOf(uint256 noteId) external view returns (address);
