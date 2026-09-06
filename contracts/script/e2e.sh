@@ -68,7 +68,7 @@ trap cleanup EXIT
 for a in $DEPLOYER $ORIG $BORR $AGENT $BUYER; do fund "$a"; done
 
 step "1. Deploy and wire"
-DEPLOYER_PRIVATE_KEY=$DEPLOYER_PK forge script script/Deploy.s.sol:Deploy \
+ALLOW_OVERWRITE=true DEPLOYER_PRIVATE_KEY=$DEPLOYER_PK forge script script/Deploy.s.sol:Deploy \
   --rpc-url "$RPC" --broadcast >/dev/null 2>&1 || { echo "deploy failed"; exit 1; }
 CHAIN=$(cast chain-id --rpc-url "$RPC")
 J=deployments/$CHAIN.json

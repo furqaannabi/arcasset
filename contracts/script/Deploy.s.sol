@@ -104,6 +104,16 @@ contract Deploy is Script {
 
         string memory path =
             string.concat(vm.projectRoot(), "/deployments/", vm.toString(block.chainid), ".json");
+
+        // Refuse to clobber an existing record. A fork keeps the forked chain's
+        // id, so a local test run against a fork of Arc writes to the same file
+        // as the real deployment — which is exactly how the real testnet
+        // addresses were once overwritten by a throwaway run.
+        if (vm.exists(path) && !vm.envOr("ALLOW_OVERWRITE", false)) {
+            console.log("refusing to overwrite", path);
+            console.log("set ALLOW_OVERWRITE=true if you really mean to replace it");
+            revert("deployment record exists");
+        }
         vm.writeJson(json, path);
         console.log("wrote", path);
     }

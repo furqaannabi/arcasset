@@ -203,6 +203,15 @@ decide(period, note, now) →
 Partial payment inside grace is `WAIT`, not `DELINQUENT`. An issuer who has paid
 80% with two days of grace left has not missed anything yet.
 
+### Everything time-based uses chain time, never wall time
+
+This is a system-wide rule, not an agent one. It bit in three separate places —
+the agent's decision loop, the paywall's validity check, and the buyer signing
+an authorization — because every one of them is compared against
+`block.timestamp` by a contract. Wall time and chain time agree closely on a
+live chain and not at all on a warped one, which is precisely where the demo
+lives.
+
 ### The agent decides on chain time, never wall time
 
 Every deadline it reasons about — period ends, grace, cure windows — is compared
@@ -468,6 +477,38 @@ written before the response is served.
 for the quoted amount. An authorization for more is rejected rather than
 partially consumed — accepting it would mean holding a balance we owe someone,
 which is a liability the ledger has no place for.
+
+### Things about Arc's USDC that cost a day
+
+All four were found by the end-to-end test and none are guessable from docs.
+
+**Its transfers cannot be executed on a fork.** `NativeFiatTokenV2_2` moves value
+through node-level precompiles at `0x1800…0000` and `0x1800…0001`, which have no
+bytecode on any chain — they are implemented in Arc's node. Anvil forks storage,
+so a fork reads balances perfectly and reverts with empty data on every transfer.
+`contracts/script/MockEIP3009Token.sol` exists for this reason: Circle's exact
+domain and typehash, so a client that works against it builds the same
+signatures the real token verifies.
+
+**`DOMAIN_SEPARATOR()` is not necessarily what validates.** In V2.2 the base
+`_domainSeparator()` returns a deprecated cached value while the derived
+contract overrides it to recompute. They happen to agree on Arc; on a chain
+where the cached value was written under a different chain id they would not.
+Verify against the token, do not assume.
+
+**An EIP-7702 delegated account is a contract.** Circle's `SignatureChecker`
+routes any address with code down ERC-1271 instead of `ecrecover`. Well-known
+Anvil keys have delegations set on public testnets by other people, so a test
+that uses one gets `invalid signature` for a signature that is perfectly valid.
+It also means **7702 accounts cannot pay us**, because we accept EOA signatures
+only — that is the deliberate cost of not accepting contract signatures, and it
+will matter more as 7702 spreads.
+
+**Bound gas by estimate, never by forcing it.** Setting `gas` to the ceiling
+makes every settlement revert out-of-gas with no reason string, which looks
+exactly like a bad signature. Estimate, refuse anything over budget, then send.
+EIP-3009 settlement costs well over 200k because `SignatureChecker` is an
+external library call.
 
 ### Endpoints
 
