@@ -8,18 +8,26 @@ Built from scratch at ETHOnline 2026 (Sep 4–13) by Furqaan and Apurva.
 
 ## Status
 
-Day 2 of 10. The specs in [docs/](docs/) are settled and the frontend is scaffolded; the contracts, subgraph, agent and paid API are not written yet.
+Day 3 of 10. Contracts are deployed and verified on Arc testnet; the agent
+services notes unattended; the paid API takes money from a cold wallet.
 
 | | |
 |---|---|
-| Specs | Complete — [docs/](docs/), nine documents, interfaces fixed so both halves can be built in parallel |
-| `web/` | Scaffolded. Next.js 16.3.4, wagmi, viem, TanStack Query. Five routes build and serve; four are honest stubs that name their spec and due date rather than faking data. Nine tests pass over the money formatting |
-| `contracts/` | Not started — due Sep 6–7 |
-| `subgraph/` | Not started — due Sep 8 |
-| `backend/` | Not started — due Sep 9–11 |
-| Deployed | Nothing. See [below](#deployed--arc-testnet-chain-5042002) |
+| `contracts/` | 7 deployed and **verified** on Arc testnet. 115 tests, plus a 37-assertion run against a live node |
+| `backend/` | Agent, x402 paid API, document upload. 56 tests and three end-to-end suites |
+| `web/` | Next.js 16, `/propose` built with live schedule preview. 28 tests |
+| `subgraph/` | Not started. The agent and API read chain directly meanwhile — see [One index, three consumers](#one-index-three-consumers) |
+| Specs | [docs/](docs/), eight documents. Read the relevant one before changing an interface |
 
-Screenshots go here once there is live state worth showing. There is none yet, and a mockup dressed as a screenshot is the one thing this README will not carry.
+**The deployed personhood verifier is a mock.** It accepts any well-formed proof,
+so `PartyRegistry` is currently no sybil defence at all — anyone can verify any
+address. Everything downstream is built and tested against it, but the claim
+that "two verified addresses are two humans" is not true on-chain until a World
+Selfie Check adapter replaces it. That is the largest gap between what this
+system does and what it says.
+
+Screenshots go here once there is live state worth showing. A mockup dressed as
+a screenshot is the one thing this README will not carry.
 
 ## The problem
 
@@ -197,17 +205,115 @@ Addresses live in `contracts/deployments/5042002.json`, the single source every 
 
 ## Running it
 
-Only the frontend runs today.
+### What you need
+
+| | | |
+|---|---|---|
+| [Bun](https://bun.sh) | 1.4+ | Backend and web runtime, package manager, test runner |
+| [Foundry](https://getfoundry.sh) | 1.7+ | `forge`, `cast`, `anvil` |
+| Docker | any recent | Postgres for the backend. Nothing else needs it |
+| Node | 20+ | Only for the Next.js build |
+
+Verified against Bun 1.4.0, Foundry 1.7.1, Docker 29.7.2, Node 24.
+
+### Clone
+
+```bash
+git clone --recurse-submodules https://github.com/furqaannabi/arcasset
+cd arcasset
+```
+
+`forge-std` and OpenZeppelin are pinned git submodules. If you cloned without
+them, `git submodule update --init --recursive` — otherwise `forge build` fails
+on missing imports rather than on anything you did.
+
+### Contracts
+
+```bash
+cd contracts
+forge build
+forge test                      # 115 tests
+./script/e2e.sh                 # 37 assertions against a live Anvil node
+```
+
+`e2e.sh` starts and stops its own node. It runs the whole lifecycle — deploy,
+verify parties, propose, accept, approve, mint, list, buy, repay, settle, claim,
+miss, cure, mature — and asserts every revert that should happen along the way.
+
+Deploying somewhere real is one command, and refuses to run unless the RPC
+reports chain 5042002:
+
+```bash
+./script/deploy-testnet.sh --keystore ~/.foundry/keystores/<name>
+```
+
+It verifies on Blockscout as it goes and writes `deployments/5042002.json`, which
+every other package reads. It will **not** overwrite an existing record without
+`ALLOW_OVERWRITE=true` — a fork keeps the forked chain's id, so a throwaway local
+run writes to the same filename as the real deployment.
+
+### Backend
+
+```bash
+cd backend
+cp .env.example .env            # works as-is against Arc testnet, agent off
+bun install
+bun run db:up                   # Postgres 17 in Docker, waits for healthy
+bun run db:migrate
+bun run dev                     # :3001
+```
+
+Then `curl localhost:3001/health`. Endpoints, payment flow and every environment
+variable are in [backend/README.md](backend/README.md).
+
+Two things are off until you configure them, and `/health` says which:
+
+- **No `AGENT_PRIVATE_KEY`** — nothing is serviced automatically. Repayment still
+  works by hand.
+- **No `INTEL_PAY_TO`** — the paid API returns `503` rather than serving unpaid.
+
+To watch the agent actually work, `./script/agent-e2e.sh`: it builds a note on
+Anvil, delegates it, repays a period, starts the backend, and then touches
+nothing. The period settles in about a second.
+
+### Web
 
 ```bash
 cd web
-cp .env.example .env.local      # chain, RPC, subgraph endpoint
+cp .env.example .env.local
 bun install
 bun run dev                     # :3000
-bun test                        # 9 tests over the money formatting
+bun test                        # 28 tests, mostly over money formatting
 ```
 
-`NEXT_PUBLIC_SUBGRAPH_URL` is unset until the subgraph is published, and the views say so rather than spinning forever.
+`NEXT_PUBLIC_SUBGRAPH_URL` is unset until the subgraph is published, and the
+views say so rather than spinning forever.
+
+### Getting testnet funds
+
+The deployer needs native USDC on Arc testnet — it is both the gas token and the
+settlement asset. Contract deployment cost 0.18 USDC in total.
+
+```bash
+cast wallet import <name> --interactive     # prompts, nothing hits your history
+cast wallet address --keystore ~/.foundry/keystores/<name>
+cast balance <address> --rpc-url https://rpc.testnet.arc.network
+```
+
+Use `--interactive`, not `--private-key`: the flag form puts the key in your
+shell history and the process list.
+
+### A trap worth knowing before you debug one
+
+**Arc USDC is one balance with two representations.** Native `msg.value` is 18
+decimals and is what every contract uses. The ERC-20 at
+`0x3600000000000000000000000000000000000000` is Circle's FiatToken at 6 decimals,
+and is what x402, wallets and explorers use. `balanceOf` there is exactly the
+native balance divided by 1e12 — same money, two scales. Mixing them is a factor
+of a trillion.
+
+More of these, all found the hard way, in
+[docs/04-backend.md](docs/04-backend.md#things-about-arcs-usdc-that-cost-a-day).
 
 ## Rules
 
