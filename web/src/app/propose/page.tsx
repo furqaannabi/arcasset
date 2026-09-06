@@ -1,4 +1,4 @@
-import { ProposeForm } from "@/components/propose-form";
+import { ProposeGate } from "@/components/propose-gate";
 
 export const metadata = { title: "Propose · ArcAsset" };
 
@@ -15,18 +15,7 @@ export default function IssuePage() {
         </p>
       </header>
 
-      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-        <p className="font-medium">Registry not deployed</p>
-        <p className="mt-1 text-xs opacity-80">
-          The verification gate and the issuance queue are inert until{" "}
-          <code>PartyRegistry</code> and <code>IssuanceQueue</code> reach Arc
-          testnet. Everything below is live: terms validate against the exact
-          checks <code>propose</code> performs, the agreement is hashed in your
-          browser, and the schedule uses the same maths the contract will.
-        </p>
-      </div>
-
-      <ProposeForm />
+      <ProposeGate />
     </div>
   );
 }

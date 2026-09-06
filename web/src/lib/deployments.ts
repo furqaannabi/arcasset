@@ -1,21 +1,17 @@
 import type { Address } from "viem";
 import { CHAIN } from "./chain";
-import testnet from "../../../contracts/deployments/5042002.json";
 
 /**
- * Addresses come from contracts/deployments/<chainId>.json, written by the
- * deploy script — the same file the backend and the subgraph manifest read.
- * Nothing here hardcodes an address; see CLAUDE.md ("One source of truth").
+ * Contract addresses, injected at build time by next.config.ts from
+ * contracts/deployments/<chainId>.json — the same file the backend and the
+ * subgraph manifest read. Nothing here hardcodes an address; see CLAUDE.md
+ * ("One source of truth").
  *
- * The import is static because a bundler cannot resolve a path chosen at
- * runtime, and only the testnet deployment exists today. Adding mainnet means
- * adding 5042.json and a branch here — deliberately a code change, so a
- * missing deployment is a build failure rather than a silent zero address.
+ * The config validates the file's shape and throws at build time if it is
+ * missing or malformed, so by the time this runs the JSON is known-good. The
+ * chain-id check below is kept anyway: it is the one thing that could still
+ * disagree, if NEXT_PUBLIC_CHAIN changed between build and run.
  */
-const BY_CHAIN: Record<number, Deployment> = {
-  5042002: testnet as Deployment,
-};
-
 export type Deployment = {
   chainId: number;
   PartyRegistry: Address;
@@ -28,13 +24,19 @@ export type Deployment = {
 };
 
 function load(): Deployment {
-  const found = BY_CHAIN[CHAIN.id];
-  if (!found) {
+  const raw = process.env.NEXT_PUBLIC_DEPLOYMENT;
+  if (!raw) {
     throw new Error(
-      `no deployment for chain ${CHAIN.id} — add contracts/deployments/${CHAIN.id}.json and register it in lib/deployments.ts`,
+      "NEXT_PUBLIC_DEPLOYMENT is unset — next.config.ts injects it; this build did not go through it",
     );
   }
-  return found;
+  const parsed = JSON.parse(raw) as Deployment;
+  if (parsed.chainId !== CHAIN.id) {
+    throw new Error(
+      `deployment is for chain ${parsed.chainId} but the app is configured for ${CHAIN.id}`,
+    );
+  }
+  return parsed;
 }
 
 export const DEPLOYMENT = load();
