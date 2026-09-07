@@ -1,3 +1,5 @@
+import { hashToField } from "@worldcoin/idkit-core/hashing";
+
 /**
  * Verifies a World Selfie Check result against World's cloud API.
  *
@@ -35,41 +37,40 @@ export function isWorldProof(v: unknown): v is WorldProof {
 }
 
 /**
- * IDKit 2.x returns a World ID 3.0 proof, and the v4 verify endpoint accepts
- * one — but only inside its own envelope: protocol_version, nonce, action and
- * a `responses` array, with the proof's fields renamed (`nullifier`, not
- * `nullifier_hash`) and an `identifier` naming the credential. Posting the
- * flat 3.0 body straight at v4 fails with "responses array is required", which
- * is what it did.
+ * Verifies against `/api/v2/verify/{app_id}`, which is what IDKit 2.x proofs
+ * are meant for. This mirrors IDKit's own `verifyCloudProof` exactly: the flat
+ * proof, the action, and `signal_hash`.
  *
- * `signal` goes raw. World hashes it with hashToField (keccak256 shifted right
- * eight bits), not plain keccak256 — so hashing it here would produce a value
- * that never matches the one bound into the proof.
+ * Two things had to be wrong together for this to fail the way it did. The v4
+ * endpoint rejects the flat 3.0 body outright ("responses array is required"),
+ * and its envelope, once built, still returned `invalid_proof` — because the
+ * signal was being sent raw. World binds `hashToField(signal)` into the proof
+ * (keccak256 shifted right eight bits), so anything else is a different public
+ * input and the proof cannot verify.
+ *
+ * hashToField comes from @worldcoin/idkit-core pinned to the same 2.1.0 the
+ * web app resolves, rather than reimplemented here — the two must agree to the
+ * bit, and a subtly different hash fails as `invalid_proof` with nothing to
+ * point at.
  */
 export async function verifyWithWorld(
   proof: WorldProof,
   config: WorldConfig,
   signal?: string,
 ): Promise<WorldResult> {
-  const base = config.baseUrl ?? "https://developer.world.org/api/v4/verify";
+  const base = config.baseUrl ?? "https://developer.worldcoin.org/api/v2/verify";
   let res: Response;
   try {
     res = await fetch(`${base}/${config.appId}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        protocol_version: "3.0",
-        nonce: crypto.randomUUID(),
+        nullifier_hash: proof.nullifier_hash,
+        proof: proof.proof,
+        merkle_root: proof.merkle_root,
+        verification_level: proof.verification_level,
         action: config.action,
-        ...(signal ? { signal } : {}),
-        responses: [
-          {
-            identifier: proof.verification_level,
-            merkle_root: proof.merkle_root,
-            nullifier: proof.nullifier_hash,
-            proof: proof.proof,
-          },
-        ],
+        signal_hash: hashToField(signal ?? "").digest,
       }),
     });
   } catch (err) {
@@ -80,10 +81,19 @@ export async function verifyWithWorld(
 
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
+    // World answers 400 with the per-proof reason nested in `results`; the
+    // top-level code only says that something failed. Log the whole body —
+    // diagnosing a rejected proof without it is guesswork.
+    console.warn(`[world] ${res.status} rejected the proof: ${JSON.stringify(body)}`);
+    const nested = Array.isArray(body["results"])
+      ? (body["results"] as Record<string, unknown>[])[0]
+      : undefined;
+    const code = nested?.["code"] ?? body["code"];
+    const detail = nested?.["detail"] ?? body["detail"];
     return {
       ok: false,
-      code: typeof body["code"] === "string" ? body["code"] : `world_http_${res.status}`,
-      detail: typeof body["detail"] === "string" ? body["detail"] : JSON.stringify(body),
+      code: typeof code === "string" ? code : `world_http_${res.status}`,
+      detail: typeof detail === "string" ? detail : JSON.stringify(body),
     };
   }
 
@@ -94,6 +104,9 @@ export async function verifyWithWorld(
     : [];
   const first = results[0];
   if (body["success"] === false || (first && first["success"] === false)) {
+    // The per-proof entry says *why*; the top level only says that something
+    // failed. Logged whole because chasing this without it is guesswork.
+    console.warn(`[world] verification failed: ${JSON.stringify(body)}`);
     const code = first?.["code"] ?? body["code"];
     const detail = first?.["detail"] ?? body["detail"];
     return {
