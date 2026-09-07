@@ -172,7 +172,26 @@ committing:
   "endpoints": [{ "path": "/intel/borrower/:address", "price": "500000" }] }
 ```
 
-`GET /intel/borrower/:address` costs **$0.50**, paid with x402.
+Two priced endpoints:
+
+| | | |
+|---|---|---|
+| `GET /intel/borrower/:address` | **$0.50** | Does this counterparty pay on time |
+| `GET /intel/originator/:address` | **$1.00** | Do the loans this party writes perform |
+
+The originator scorecard costs more because it answers the question a capital
+allocator actually has, and it carries one field nobody outside the servicer can
+see: `selfCureRate`, the share of this originator's missed periods that the
+*originator themselves* paid. A high value means the headline default rate is
+being held up out of their own pocket.
+
+Its denominator is every period that was ever missed — currently `Missed` plus
+currently `Cured` — and deliberately not `note.periodsMissed()`, which counts
+only misses still outstanding because the contract decrements it on a cure.
+Using that would drop every cured miss out of the denominator and divide by zero
+in precisely the case the field exists to describe.
+
+Both are paid with x402.
 
 ```
 1. GET with no payment            → 402 + PAYMENT-REQUIRED (base64 requirements)
@@ -185,6 +204,21 @@ EIP-3009 signs. Amounts *in the data* are 18-decimal, because they come from
 contract state. Same asset, two scales; every response carries `decimals`.
 
 ```jsonc
+// GET /intel/originator/:address
+{ "originator": "0x…", "notesProposed": 3, "notesMinted": 1,
+  "proposalsRejected": 0, "proposalsExpired": 1,
+  "principalOriginated": "100000000000000000000000", "decimals": 18,
+  "book": { "maturedRate": null, "defaultRate": null,
+            "periodsMissed": 1, "selfCuredPeriods": 1, "selfCureRate": 1 },
+  "asOfBlock": 60889146 }
+```
+
+`maturedRate` and `defaultRate` are `null` until something closes. A book with
+everything still open has demonstrated nothing, and reporting a 0% default rate
+would imply otherwise.
+
+```jsonc
+// GET /intel/borrower/:address
 { "borrower": "0x…", "notesAccepted": 1, "notesMatured": 0, "notesDefaulted": 0,
   "principalOwed": "100000000000000000000000", "decimals": 18,
   "periods": { "settled": 1, "missed": 0, "cured": 0, "outstanding": 2 },
@@ -247,6 +281,7 @@ bun run typecheck
 ./script/agent-e2e.sh           # the agent services a note unattended
 ./script/x402-e2e.sh            # a cold wallet pays and is served
 ./script/identity-e2e.sh        # a wallet gets verified on-chain
+./script/originator-e2e.sh      # an originator covering their own borrower's miss
 bun run script/documents-e2e.ts # upload, seal, and who can read
 ```
 

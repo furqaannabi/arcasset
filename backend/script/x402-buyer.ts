@@ -36,7 +36,8 @@ const erc20 = [
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
 ] as const;
 
-const url = `${API}/intel/borrower/${TARGET}`;
+const PATH = process.env["TARGET_PATH"] ?? "borrower";
+const url = `${API}/intel/${PATH}/${TARGET}`;
 const buyerUsdc = await pub.readContract({ address: USDC, abi: erc20, functionName: "balanceOf", args: [account.address] });
 console.log(`\nbuyer ${account.address}`);
 console.log(`  code: ${(await pub.getCode({ address: account.address })) ?? "(none — a plain EOA)"}`);
@@ -51,7 +52,7 @@ ok("PAYMENT-REQUIRED header present", Boolean(header));
 const offer = decodeHeader<{ accepts: PaymentRequirements[] }>(header ?? "");
 const req = offer.accepts[0]!;
 console.log(`     price ${req.maxAmountRequired} (6dp) to ${req.payTo}, scheme ${req.scheme}`);
-ok("priced in 6-decimal base units", req.maxAmountRequired === "500000", req.maxAmountRequired);
+ok("priced in 6-decimal base units", /^\d+$/.test(req.maxAmountRequired), req.maxAmountRequired);
 
 console.log("\n\x1b[1m2. Sign an EIP-3009 authorization — no transaction, no gas\x1b[0m");
 // The chain's clock, not this machine's. The token compares validBefore
@@ -91,9 +92,17 @@ const body = await second.json();
 ok("200 OK", second.status === 200, `got ${second.status}: ${JSON.stringify(body).slice(0, 160)}`);
 ok("PAYMENT-RESPONSE header present", Boolean(second.headers.get("PAYMENT-RESPONSE")));
 if (second.status === 200) {
-  ok("data is about the borrower asked for", String(body.borrower).toLowerCase() === TARGET.toLowerCase());
+  ok("data is about the party asked for", String(body.borrower ?? body.originator).toLowerCase() === TARGET.toLowerCase());
   ok("carries asOfBlock so the buyer can reproduce it", typeof body.asOfBlock === "number");
-  console.log(`     notes ${body.notesAccepted}, settled ${body.periods?.settled}, missed ${body.periods?.missed}, onTimeRate ${body.punctuality?.onTimeRate}`);
+  if (body.book) {
+    console.log(`     minted ${body.notesMinted}, periodsMissed ${body.book.periodsMissed}, selfCured ${body.book.selfCuredPeriods}, selfCureRate ${body.book.selfCureRate}`);
+    const wantSelfCured = Number(process.env["EXPECT_SELF_CURED"] ?? "-1");
+    if (wantSelfCured >= 0) ok(`selfCuredPeriods is ${wantSelfCured}`, body.book.selfCuredPeriods === wantSelfCured, String(body.book.selfCuredPeriods));
+    const wantRate = process.env["EXPECT_SELF_CURE_RATE"];
+    if (wantRate) ok(`selfCureRate is ${wantRate}`, String(body.book.selfCureRate) === wantRate, String(body.book.selfCureRate));
+  } else {
+    console.log(`     notes ${body.notesAccepted}, settled ${body.periods?.settled}, missed ${body.periods?.missed}, onTimeRate ${body.punctuality?.onTimeRate}`);
+  }
 }
 
 console.log("\n\x1b[1m4. The money actually moved\x1b[0m");

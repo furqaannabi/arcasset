@@ -11,6 +11,7 @@ export const noteFactoryAbi = [
 
 export const noteAbi = [
   { type: "function", name: "status", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
+  { type: "function", name: "originator", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "firstMissedAt", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
   { type: "function", name: "periodsSettled", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] },
   { type: "function", name: "periodsMissed", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] },
@@ -38,6 +39,21 @@ export const noteAbi = [
   },
 ] as const;
 
+export const queueAbi = [
+  { type: "function", name: "proposalCount", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "statusOf", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "uint8" }] },
+  {
+    type: "event", name: "Proposed",
+    inputs: [
+      { name: "proposalId", type: "uint256", indexed: true },
+      { name: "originator", type: "address", indexed: true },
+      { name: "borrower", type: "address", indexed: true },
+      { name: "digest", type: "bytes32", indexed: false },
+      { name: "documentURI", type: "string", indexed: false },
+    ],
+  },
+] as const;
+
 export const relayAbi = [
   { type: "function", name: "agentOf", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "address" }] },
   { type: "function", name: "settlePeriod", stateMutability: "nonpayable", inputs: [{ type: "uint256" }, { type: "uint16" }], outputs: [] },
@@ -46,6 +62,17 @@ export const relayAbi = [
 ] as const;
 
 export const vaultAbi = [
+  {
+    type: "event", name: "Repaid",
+    inputs: [
+      { name: "noteId", type: "uint256", indexed: true },
+      { name: "periodIndex", type: "uint16", indexed: true },
+      { name: "payer", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "timestamp", type: "uint64", indexed: false },
+      { name: "onTime", type: "bool", indexed: false },
+    ],
+  },
   { type: "function", name: "paidOf", stateMutability: "view", inputs: [{ type: "uint256" }, { type: "uint16" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "uint256" }] },
 ] as const;

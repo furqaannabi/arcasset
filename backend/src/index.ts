@@ -109,7 +109,18 @@ if (storage.kind === "r2") {
 }
 const admins = (process.env["ADMIN_ADDRESSES"] ?? "").split(",").map((a) => a.trim()).filter(Boolean);
 
-app.route("/intel", intelRoutes(config, publicClient, wallet, deployment.NoteFactory));
+// Reading logs from the deployment block, not from genesis: Arc refuses large
+// getLogs ranges, and nothing before the deploy can concern these contracts.
+const deployBlock = BigInt(process.env["DEPLOY_BLOCK"] ?? "0");
+
+app.route(
+  "/intel",
+  intelRoutes(
+    config, publicClient, wallet,
+    deployment.NoteFactory, deployment.IssuanceQueue, deployment.RepaymentVault,
+    deployBlock,
+  ),
+);
 app.route("/documents", documentRoutes(storage, admins));
 
 const attestorAddress = config.attestorKey ? privateKeyToAccount(config.attestorKey).address : null;
