@@ -1,6 +1,8 @@
 # 07 — Identity
 
-**Status: Spec**
+**Status: Spec — blocked. The on-chain verification this describes is not
+possible on Arc; see [the constraint](#the-on-chain-check-we-assumed-does-not-exist)
+before building against it.**
 
 World Selfie Check gates both write-side roles — originating and borrowing.
 Holding stays open to anyone.
@@ -36,21 +38,111 @@ it is what makes the dataset mean anything.
   The score in [04](04-backend.md) comes from repayment behaviour alone.
   Verification is table stakes for issuing, not a point in your favour.
 
-## Flow
+## The on-chain check we assumed does not exist
+
+**Status: unresolved. Nothing can pass the gate until this is decided.**
+
+This spec originally described the standard World ID pattern: the client gets a
+proof, submits it to `PartyRegistry.verify(party, proof)`, and the registry
+asks World's verifier contract whether it is valid. The contracts are written
+for exactly that — `PartyRegistry` holds an `IPersonhoodVerifier` and calls
+`verify(party, proof)` expecting a nullifier back.
+
+It cannot work, for two independent reasons:
+
+1. **The World ID Router is not deployed on Arc.** On-chain verification routes
+   through it, and it exists on Ethereum, World Chain, Optimism, Polygon and
+   Base. Arc is not on the list. There is no contract on Arc to ask.
+2. **Selfie Check never verifies on-chain, on any chain.** Even where the
+   Router exists, only *Orb* credentials can be checked on-chain — World's docs
+   require `groupId == 1`, which is Orb. Selfie Check is verified by a server
+   calling World's cloud API (`POST https://developer.world.org/api/v4/verify/
+   {rp_id}`), which returns the nullifier. There is no proof artifact a
+   contract can validate.
+
+These are independent. Even if World deployed to Arc tomorrow, Selfie Check
+still would not verify on-chain.
+
+### What can be built instead
+
+Move the check off-chain and attest to its result:
 
 ```
 1. Party connects wallet, visits /propose (originator) or a proposal link
    (borrower).
 2. isVerified(address) == false → show the verification step.
 3. World Selfie Check runs (World App / IDKit).
-4. Proof returned to the client, submitted to PartyRegistry.verify(party, proof).
-5. Registry validates the proof against World's verifier and checks the
-   nullifier is unused.
-6. PartyVerified emitted → subgraph records the party → proposing and
+4. The result goes to our backend, which verifies it against World's cloud API
+   and receives the nullifier.
+5. The backend signs (party, nullifier) with an attestor key.
+6. That signature is submitted as the `proof` bytes to
+   PartyRegistry.verify(party, proof).
+7. AttestedVerifier — an IPersonhoodVerifier implementation — recovers the
+   signature, checks it came from the attestor, and returns the nullifier.
+8. PartyVerified emitted → subgraph records the party → proposing and
    accepting unlock.
 ```
 
-Verification is one on-chain transaction, paid by the issuer. It happens once.
+Verification stays one on-chain transaction, paid by the party. It happens once.
+
+**What this costs, stated plainly.** The attestor key becomes trusted. If it
+leaks, anyone can mint verifications for any address, and the sybil property
+this whole document rests on is gone. The chain stops proving personhood and
+starts proving *our server said so*. That belongs in the README and in the
+demo, in the same voice this spec already uses about the admin key: real
+centralisation, named rather than dressed up.
+
+The alternatives are worse. Orb-only verifies on-chain but still not on Arc, so
+it would need cross-chain proof relaying — out of scope, and too few people are
+Orb-verified to demo live. Keeping the mock means World contributes nothing.
+
+### Swapping the verifier forces a full redeploy
+
+`PartyRegistry.verifier` is `immutable`, and every contract downstream stores
+its dependency the same way:
+
+```
+new verifier → new PartyRegistry → new IssuanceQueue → new NoteFactory
+            → new RepaymentVault / ServicingRelay / Offering
+```
+
+So changing it means redeploying everything, with new addresses in
+`deployments/5042002.json`, a new `startBlock` in the subgraph manifest, and a
+fresh Studio deploy.
+
+**Consequence: do not seed testnet history before this lands.** Any note,
+repayment or verification created against the current addresses is orphaned by
+the redeploy, and the subgraph would keep indexing contracts nobody uses.
+
+### What is deployed today
+
+`PersonhoodVerifier` on Arc testnet is `MockVerifier` from
+`contracts/script/` — the deploy script logs "WARNING: deployed MockVerifier.
+It proves nothing." It accepts `abi.encode(party, humanSecret)` and derives a
+nullifier from the secret. Useful for exercising the lifecycle; it must not
+reach the demo while we claim Selfie Check gates issuance.
+
+## The borrower verifies first, and this is backwards from an invite
+
+`IssuanceQueue.propose()` reverts `BorrowerNotVerified()` if the named borrower
+is not already verified. So the order is:
+
+```
+borrower verifies  →  originator proposes to them  →  borrower accepts
+```
+
+You cannot send someone a proposal in order to onboard them. This is not a
+missing feature — the borrower is inside the digest, so naming an address that
+might later become someone else would break the binding `approve` → `mint`
+depends on. But it does mean:
+
+- **The UI must check `isVerified(borrower)` while the address is being typed**,
+  and say *which* of "not an address", "that is you", or "not verified" failed.
+  Otherwise the first sign someone gets is a revert at signing time. Currently
+  `/propose` validates the first two and not the third —
+  see [05 — Web](05-web.md#propose--propose-a-note).
+- **The demo needs the borrower's wallet verified before the originator's
+  screen works at all.** Sequence the recording accordingly.
 
 ## Nullifier handling
 

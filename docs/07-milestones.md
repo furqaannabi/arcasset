@@ -54,9 +54,9 @@ built against fixed interfaces, not against each other's progress.
 | **Sep 7** | ✅ done Sep 6. `Offering`, `RepaymentVault`, `ServicingRelay`, claims. Guard tests from [02](02-contracts.md#guards--every-one-of-these-is-a-test) | Full lifecycle passes in Foundry: issue → fund → repay → settle → claim |
 | **Sep 8** | Backend skeleton: Prisma schema, Postgres, R2, wallet sessions, document upload + seal. Subgraph: all entities and handlers, local `graph-node` | Every entity in [03](03-subgraph.md#entities) populates from a seeded fixture run |
 | **Sep 9** | Agent decision loop + safety rails. Document review UI on `/proposal/[id]`. `/note/[address]` | Agent settles a period unattended on Anvil; `/health` reports lag correctly |
-| **Sep 10** | Deploy to Arc testnet, subgraph to Studio, seed history | Real notes with real repayment history are indexed and visible |
+| **Sep 10** | ⚠️ Contracts and subgraph are deployed; seeding is **blocked** — see [07](06-identity.md#swapping-the-verifier-forces-a-full-redeploy). The verifier swap redeploys everything, orphaning anything seeded first | Real notes with real repayment history are indexed and visible |
 | **Sep 11** | Intel API: three endpoints, 402 flow, payment verification. `/intel` storefront | A stranger's wallet can pay and get a response end-to-end |
-| **Sep 12** | World Selfie Check wired live. `/agent` console. Buffer | Verification gates issuance on testnet |
+| **Sep 12** | ⚠️ World Selfie Check **cannot** be wired as specified — no World ID Router on Arc, and Selfie Check never verifies on-chain. Needs an attesting verifier + backend route + full redeploy; decide before this date, not on it. `/agent` console. Buffer | Verification gates issuance on testnet |
 | **Sep 13** | Demo video, README, submission | Submitted with ≥2h to spare |
 
 ## Cut lines
