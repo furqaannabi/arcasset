@@ -266,10 +266,10 @@ package reads. Nothing hardcodes an address.
 |---|---|---|
 | [Bun](https://bun.sh) | 1.4+ | Backend and web runtime, package manager, test runner |
 | [Foundry](https://getfoundry.sh) | 1.7+ | `forge`, `cast`, `anvil` |
-| Docker | any recent | Postgres for the backend. Nothing else needs it |
 | Node | 20+ | Only for the Next.js build |
 
-Verified against Bun 1.4.0, Foundry 1.7.1, Docker 29.7.2, Node 24.
+Verified against Bun 1.4.0, Foundry 1.7.1, Node 24. A Postgres the backend can
+reach — hosted or local — and nothing else.
 
 ### Clone
 
@@ -311,10 +311,9 @@ run writes to the same filename as the real deployment.
 
 ```bash
 cd backend
-cp .env.example .env            # works as-is against Arc testnet, agent off
+cp .env.example .env            # then point DATABASE_URL at a Postgres
 bun install
-bun run db:up                   # Postgres 17 in Docker, waits for healthy
-bun run db:migrate
+bun run db:migrate              # applies migrations; safe to re-run
 bun run dev                     # :3001
 ```
 

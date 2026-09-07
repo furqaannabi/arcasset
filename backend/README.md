@@ -14,15 +14,18 @@ file is the interface.
 ## Running it
 
 ```bash
-cp .env.example .env          # works as-is against Arc testnet, agent off
+cp .env.example .env          # then point DATABASE_URL at a Postgres
 bun install
-bun run db:up                 # Postgres 17 in Docker, waits for healthy
-bun run db:migrate
+bun run db:migrate            # applies migrations; safe to re-run
 bun run dev                   # :3001
 ```
 
-`bun run db:up` is safe to run alongside other projects — the compose project is
-pinned to `arcasset` and the port binds to `127.0.0.1` only.
+Any Postgres will do — hosted or local. There is no container to start.
+
+One thing that costs more time than it should: **quote `DATABASE_URL` and close
+the quote.** dotenv keeps an unterminated opening quote as part of the value,
+and Prisma then reports `P1013: the scheme is not recognized` — which points at
+the protocol rather than at the quote.
 
 With no `AGENT_PRIVATE_KEY` the agent does not run, nothing is serviced
 automatically, and `/health` says so. With no `INTEL_PAY_TO` the paid API returns
@@ -279,7 +282,7 @@ Everything is read once at startup and validated loudly. See `.env.example`.
 
 | | |
 |---|---|
-| `DATABASE_URL` | Postgres. Matches `docker-compose.yml` as shipped |
+| `DATABASE_URL` | Postgres, hosted or local. Quote it and close the quote |
 | `CHAIN_ID`, `RPC_URL` | Defaults to Arc testnet, 5042002 |
 | `AGENT_PRIVATE_KEY` | Unset means the agent does not run |
 | `TICK_INTERVAL_MS` | 60000. The demo runs at 5000 to make the loop visible |

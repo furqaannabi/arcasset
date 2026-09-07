@@ -42,20 +42,18 @@ read them, and the draft a proposal existed as before it reached the chain.
 
 ## Running Postgres
 
-`bun run db:up` brings up Postgres 17 via `docker-compose.yml` and waits for it
-to be genuinely accepting connections, not merely started — migrations run the
-moment compose reports healthy, so the healthcheck has to mean it.
+Any Postgres the process can reach; `bun run db:migrate` applies the migrations
+and is safe to re-run. There is no container to start and nothing to keep alive
+between sessions.
 
-Two things in that file are deliberate:
-
-- **The compose project is named explicitly** (`name: arcasset`). Compose
-  otherwise derives it from the directory, so every project on a machine with a
-  `backend/` directory shares one namespace. Before that line existed, a
-  `compose up` here recreated a different project's postgres container. Volumes
-  survived; the container did not.
-- **The port is bound to `127.0.0.1`**, not the default all-interfaces. A
-  trust-everything dev database should not be reachable from the network the
-  laptop happens to be on.
+This used to ship a `docker-compose.yml`, and two things it had to get right are
+worth remembering if one ever comes back. The compose project name has to be
+pinned, because compose otherwise derives it from the directory and every
+project on a machine with a `backend/` directory shares one namespace — a
+`compose up` here once recreated a different project's postgres container. And
+the port has to bind to `127.0.0.1`, not the default all-interfaces, or a
+trust-everything dev database is reachable from whatever network the laptop is
+on.
 
 **Prisma is pinned to 7.10.0.** npm's `latest` tag for `prisma` currently points
 at `8.0.0-rc.13` — a release candidate with a rewritten CLI where `migrate dev`
@@ -66,6 +64,10 @@ helpfully upgrade it.
 Prisma 7 also moved the connection URL out of `schema.prisma` into
 `prisma.config.ts`, and the client talks to Postgres through a driver adapter
 (`@prisma/adapter-pg`) rather than its own engine binary.
+
+**Quote `DATABASE_URL`, and close the quote.** dotenv keeps an unterminated
+opening quote as part of the value, and Prisma reports `P1013: the scheme is not
+recognized` — which sends you looking at the protocol rather than at the quote.
 
 ## Schema
 
