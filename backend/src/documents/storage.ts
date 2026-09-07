@@ -20,12 +20,25 @@ export interface Storage {
 export class R2Storage implements Storage {
   readonly kind = "r2" as const;
   private readonly client: Bun.S3Client;
+  private readonly publicUrl: string | null;
 
   constructor(opts: {
     accountId: string;
     accessKeyId: string;
     secretAccessKey: string;
     bucket: string;
+    /**
+     * A custom domain in front of the bucket, used as the host for presigned
+     * URLs so links do not expose the account id.
+     *
+     * It must NOT be a domain with public access enabled. Documents here are
+     * loan agreements naming people who did not agree to publish anything, and
+     * the access rule — originator, borrower, admin — is enforced in the route.
+     * A publicly readable bucket bypasses that entirely: object keys appear in
+     * logs and browser history, and "the key is hard to guess" is obscurity,
+     * not access control. `assertNotPubliclyReadable()` checks at startup.
+     */
+    publicUrl?: string | null;
   }) {
     this.client = new Bun.S3Client({
       accessKeyId: opts.accessKeyId,
@@ -33,6 +46,32 @@ export class R2Storage implements Storage {
       bucket: opts.bucket,
       endpoint: `https://${opts.accountId}.r2.cloudflarestorage.com`,
     });
+    this.publicUrl = opts.publicUrl?.replace(/\/$/, "") ?? null;
+  }
+
+  /**
+   * Write an object, then try to read it back with no credentials. If that
+   * succeeds the bucket is public and every document is readable by anyone who
+   * learns a key, whatever the route says.
+   *
+   * Returns a problem description rather than throwing, so the caller decides
+   * whether to refuse to start or to warn — but it must not be ignored.
+   */
+  async assertNotPubliclyReadable(): Promise<string | null> {
+    if (!this.publicUrl) return null;
+    const key = `.access-check/${crypto.randomUUID()}`;
+    try {
+      await this.put(key, new TextEncoder().encode("access check"), "text/plain");
+      const res = await fetch(`${this.publicUrl}/${key}`, { redirect: "manual" });
+      if (res.ok) {
+        return `${this.publicUrl} serves bucket objects without a signature — document access control is bypassed`;
+      }
+      return null;
+    } catch (err) {
+      return `could not complete the public-access check: ${String(err)}`;
+    } finally {
+      await this.delete(key).catch(() => {});
+    }
   }
 
   async put(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
@@ -49,7 +88,12 @@ export class R2Storage implements Storage {
 
   /** Short by default. A link that outlives the request is a link that leaks. */
   async signedUrl(key: string, expiresInSeconds: number): Promise<string | null> {
-    return this.client.presign(key, { expiresIn: expiresInSeconds });
+    const url = this.client.presign(key, { expiresIn: expiresInSeconds });
+    if (!this.publicUrl) return url;
+    // Same signature, nicer host. The query string still carries it, so the
+    // link expires exactly as it would against the account endpoint.
+    const parsed = new URL(url);
+    return `${this.publicUrl}${parsed.pathname.replace(/^\/[^/]+/, "")}${parsed.search}`;
   }
 }
 
@@ -96,8 +140,18 @@ export function storageFromEnv(): Storage {
   const accessKeyId = process.env["R2_ACCESS_KEY_ID"];
   const secretAccessKey = process.env["R2_SECRET_ACCESS_KEY"];
   const bucket = process.env["R2_BUCKET"];
+  const publicUrl = process.env["R2_PUBLIC_URL"] || null;
+
   if (accountId && accessKeyId && secretAccessKey && bucket) {
-    return new R2Storage({ accountId, accessKeyId, secretAccessKey, bucket });
+    return new R2Storage({ accountId, accessKeyId, secretAccessKey, bucket, publicUrl });
+  }
+  // A public URL with no credentials cannot store anything. Say so rather than
+  // falling back silently and leaving someone to wonder why uploads are local.
+  if (publicUrl) {
+    console.warn(
+      "[storage] R2_PUBLIC_URL is set but R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / " +
+        "R2_SECRET_ACCESS_KEY / R2_BUCKET are not — falling back to local storage",
+    );
   }
   return new LocalStorage(join(process.cwd(), ".documents"));
 }

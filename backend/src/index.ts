@@ -10,7 +10,7 @@ import { AgentRunner } from "./agent/runner";
 import { intelRoutes } from "./intel/routes";
 import { documentRoutes } from "./documents/routes";
 import { identityRoutes } from "./identity/routes";
-import { storageFromEnv } from "./documents/storage";
+import { storageFromEnv, R2Storage } from "./documents/storage";
 
 const config = loadConfig();
 const deployment = loadDeployment(config.chainId);
@@ -59,7 +59,11 @@ app.get("/health", async (c) => {
     ok: true,
     database: db ? "connected" : "unreachable",
     chain: { id: config.chainId, head: block === null ? null : Number(block) },
-    documents: { storage: storage.kind, admins: admins.length },
+    documents: {
+      storage: storage.kind,
+      admins: admins.length,
+      ...(storageWarning ? { WARNING: storageWarning } : {}),
+    },
     identity: {
       attestor: attestorAddress,
       world: config.worldAppId ? "configured" : "not configured",
@@ -90,6 +94,19 @@ app.get("/health", async (c) => {
 });
 
 const storage = storageFromEnv();
+
+/**
+ * If the bucket turns out to be publicly readable, the access rule in the
+ * documents route is decorative. Checked once at startup, reported by /health,
+ * and logged loudly — not left for someone to discover.
+ */
+let storageWarning: string | null = null;
+if (storage.kind === "r2") {
+  void (storage as R2Storage).assertNotPubliclyReadable().then((problem) => {
+    storageWarning = problem;
+    if (problem) console.error(`[storage] ${problem}`);
+  });
+}
 const admins = (process.env["ADMIN_ADDRESSES"] ?? "").split(",").map((a) => a.trim()).filter(Boolean);
 
 app.route("/intel", intelRoutes(config, publicClient, wallet, deployment.NoteFactory));

@@ -109,6 +109,22 @@ impossible to enable by accident, every response carries a `WARNING`, and both
 `/health` and `/identity/status` say so — demoing with it on would mean demoing
 no gate at all.
 
+### A note on R2 and public buckets
+
+`R2_PUBLIC_URL` sets the host for presigned links so URLs do not expose the
+account id. The signature still travels in the query string, so links expire
+exactly as they would against the account endpoint.
+
+**It must not point at a bucket with public access enabled.** These are loan
+agreements naming people who did not agree to publish anything, and the
+originator/borrower/admin rule lives in the route — a publicly readable bucket
+bypasses it completely. Object keys are content-addressed and hard to guess,
+which is obscurity, not access control.
+
+At startup the backend writes a probe object and tries to read it back with no
+credentials. If that succeeds it logs the problem and reports it in
+`/health` under `documents.WARNING`.
+
 ### Documents
 
 Sign in with a wallet, then `Authorization: Bearer <token>`.
@@ -207,7 +223,8 @@ Everything is read once at startup and validated loudly. See `.env.example`.
 | `INTEL_PAY_TO` | Unset means the paid API returns 503 |
 | `USDC_ERC20` | `0x3600…0000` on Arc |
 | `MAX_SETTLE_GAS` | 500000. Bounds settlement cost; does not set it |
-| `R2_*` | Absent means filesystem storage under `.documents/` |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | All four, or storage falls back to `.documents/` |
+| `R2_PUBLIC_URL` | Optional custom domain for presigned links. Must **not** have public access enabled |
 | `ADMIN_ADDRESSES` | Comma-separated. Who may approve documents |
 | `ATTESTOR_PRIVATE_KEY` | Must be the address `AttestedVerifier` was deployed with |
 | `WORLD_APP_ID`, `WORLD_ACTION` | Absent means `/identity/attest` returns 503 |
