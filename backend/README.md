@@ -79,6 +79,36 @@ Every decision is logged, including the ones to do nothing:
 `"dryRun": true` means the agent decided to default a note and did not send it —
 that path stays off until a human sets `DEFAULT_DRY_RUN=false`.
 
+### Identity
+
+Selfie Check has no on-chain proof artifact, so the backend verifies with
+World's cloud API and signs an attestation the contract can check. What that
+costs is in [docs/06-identity.md](../docs/06-identity.md); the short version is
+that the chain stops proving personhood and starts proving *this server said so*.
+
+| | |
+|---|---|
+| `GET /identity/status` | Whether attestation is configured, and whether our attestor and domain match the deployed verifier |
+| `POST /identity/attest` | Session required. Exchanges a World result for a signed attestation |
+
+`/attest` issues an attestation **only for the signed-in address**. Letting a
+caller name an arbitrary party would let them bind a human's nullifier to a
+wallet that human does not control — burning their one verification onto
+somebody else's address, permanently, because a nullifier is never freed.
+
+The caller submits the returned `proof` to `PartyRegistry.verify` themselves and
+pays for it. The attestation authorises verification; it does not perform it.
+
+`/identity/status` compares the local attestor and domain separator against the
+deployed contract. A mismatch rejects every attestation on-chain **and rejects it
+identically to a forgery**, so it is worth reporting rather than discovering.
+
+`DANGEROUS_ATTEST_WITHOUT_WORLD=true` issues attestations with no personhood
+check at all, for development without World credentials. It is named to be
+impossible to enable by accident, every response carries a `WARNING`, and both
+`/health` and `/identity/status` say so — demoing with it on would mean demoing
+no gate at all.
+
 ### Documents
 
 Sign in with a wallet, then `Authorization: Bearer <token>`.
@@ -179,15 +209,19 @@ Everything is read once at startup and validated loudly. See `.env.example`.
 | `MAX_SETTLE_GAS` | 500000. Bounds settlement cost; does not set it |
 | `R2_*` | Absent means filesystem storage under `.documents/` |
 | `ADMIN_ADDRESSES` | Comma-separated. Who may approve documents |
+| `ATTESTOR_PRIVATE_KEY` | Must be the address `AttestedVerifier` was deployed with |
+| `WORLD_APP_ID`, `WORLD_ACTION` | Absent means `/identity/attest` returns 503 |
+| `DANGEROUS_ATTEST_WITHOUT_WORLD` | Development only. Turns the personhood gate off |
 
 ## Tests
 
 ```bash
-bun test                        # 56 unit tests
+bun test                        # 66 unit tests
 bun run typecheck
 
 ./script/agent-e2e.sh           # the agent services a note unattended
 ./script/x402-e2e.sh            # a cold wallet pays and is served
+./script/identity-e2e.sh        # a wallet gets verified on-chain
 bun run script/documents-e2e.ts # upload, seal, and who can read
 ```
 

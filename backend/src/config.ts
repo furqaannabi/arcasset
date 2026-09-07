@@ -18,6 +18,10 @@ export type Config = {
   defaultDryRun: boolean;
   intelPayTo: Address | null;
   usdcErc20: Address;
+  attestorKey: Hex | null;
+  worldAppId: string | null;
+  worldAction: string | null;
+  dangerousAttestWithoutWorld: boolean;
 };
 
 function num(name: string, fallback: number): number {
@@ -53,5 +57,10 @@ export function loadConfig(): Config {
     defaultDryRun: process.env["DEFAULT_DRY_RUN"] !== "false",
     intelPayTo: address("INTEL_PAY_TO", null),
     usdcErc20: usdc,
+    attestorKey: privateKeyFrom(process.env["ATTESTOR_PRIVATE_KEY"]),
+    worldAppId: process.env["WORLD_APP_ID"] || null,
+    worldAction: process.env["WORLD_ACTION"] || null,
+    // Opt in, explicitly, and never by an unset variable.
+    dangerousAttestWithoutWorld: process.env["DANGEROUS_ATTEST_WITHOUT_WORLD"] === "true",
   };
 }

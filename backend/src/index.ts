@@ -3,11 +3,13 @@ import { dbHealthy } from "./db";
 import { loadConfig } from "./config";
 import { loadDeployment } from "./chain/deployments";
 import { publicClientFor, walletClientFor } from "./chain/client";
-import { ChainExecutor } from "./agent/executor";
+import { ChainExecutor, privateKeyFrom } from "./agent/executor";
+import { privateKeyToAccount } from "viem/accounts";
 import { RpcNoteSource } from "./agent/source";
 import { AgentRunner } from "./agent/runner";
 import { intelRoutes } from "./intel/routes";
 import { documentRoutes } from "./documents/routes";
+import { identityRoutes } from "./identity/routes";
 import { storageFromEnv } from "./documents/storage";
 
 const config = loadConfig();
@@ -58,6 +60,14 @@ app.get("/health", async (c) => {
     database: db ? "connected" : "unreachable",
     chain: { id: config.chainId, head: block === null ? null : Number(block) },
     documents: { storage: storage.kind, admins: admins.length },
+    identity: {
+      attestor: attestorAddress,
+      world: config.worldAppId ? "configured" : "not configured",
+      // Loud on purpose: demoing with this on would mean demoing no gate at all.
+      ...(config.dangerousAttestWithoutWorld
+        ? { WARNING: "DANGEROUS_ATTEST_WITHOUT_WORLD is on — there is no personhood check" }
+        : {}),
+    },
     contracts: deployment,
     agent: runner
       ? {
@@ -84,6 +94,23 @@ const admins = (process.env["ADMIN_ADDRESSES"] ?? "").split(",").map((a) => a.tr
 
 app.route("/intel", intelRoutes(config, publicClient, wallet, deployment.NoteFactory));
 app.route("/documents", documentRoutes(storage, admins));
+
+const attestorAddress = config.attestorKey ? privateKeyToAccount(config.attestorKey).address : null;
+app.route(
+  "/identity",
+  identityRoutes({
+    attestorKey: config.attestorKey,
+    attestorAddress,
+    verifier: deployment.PersonhoodVerifier,
+    chainId: config.chainId,
+    world:
+      config.worldAppId && config.worldAction
+        ? { appId: config.worldAppId, action: config.worldAction }
+        : null,
+    dangerousWithoutWorld: config.dangerousAttestWithoutWorld,
+    publicClient,
+  }),
+);
 
 /** The decision trace. In a demo this log is the agent. */
 app.get("/agent/log", (c) => {
