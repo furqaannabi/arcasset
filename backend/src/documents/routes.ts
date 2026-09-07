@@ -103,7 +103,31 @@ export function documentRoutes(storage: Storage, adminAddresses: string[]): Hono
       );
     }
 
-    const key = `drafts/${draft.id}/${contentHash}`;
+    // Same bytes twice is one document, matching the manifest's dedupe. Checked
+    // before uploading so a repeat does not leave an orphan object behind.
+    const existing = await prisma.document.findFirst({
+      where: { draftId: draft.id, contentHash },
+    });
+    if (existing) {
+      return c.json(
+        {
+          id: existing.id,
+          contentHash,
+          contentType: existing.contentType,
+          byteSize: existing.byteSize,
+        },
+        201,
+      );
+    }
+
+    // The storage key carries a random segment and is never derivable from
+    // anything we publish. It matters because `contentHash` is deliberately
+    // readable by anyone — that is how a third party verifies what was
+    // approved — and a key of the form draftId/contentHash would therefore be
+    // reconstructable by anyone who had seen the metadata. Then the only thing
+    // standing between them and a loan agreement is the bucket being private,
+    // which is one dashboard toggle away from not being true.
+    const key = `drafts/${draft.id}/${crypto.randomUUID()}`;
     try {
       await storage.put(key, bytes, sniffed);
     } catch (err) {
@@ -111,26 +135,17 @@ export function documentRoutes(storage: Storage, adminAddresses: string[]): Hono
       return c.json({ error: "storage_unavailable", message: String(err) }, 503);
     }
 
-    const doc = await prisma.document
-      .create({
-        data: {
-          draftId: draft.id,
-          filename: file.name || "document",
-          contentType: sniffed,
-          byteSize: bytes.byteLength,
-          contentHash,
-          r2Key: key,
-          uploadedBy: me,
-        },
-      })
-      .catch(async (err: unknown) => {
-        // Same bytes twice is one document, matching the manifest's dedupe.
-        const existing = await prisma.document.findFirst({
-          where: { draftId: draft.id, contentHash },
-        });
-        if (existing) return existing;
-        throw err;
-      });
+    const doc = await prisma.document.create({
+      data: {
+        draftId: draft.id,
+        filename: file.name || "document",
+        contentType: sniffed,
+        byteSize: bytes.byteLength,
+        contentHash,
+        r2Key: key,
+        uploadedBy: me,
+      },
+    });
 
     return c.json({ id: doc.id, contentHash, contentType: sniffed, byteSize: doc.byteSize }, 201);
   });

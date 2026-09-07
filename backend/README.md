@@ -122,8 +122,16 @@ bypasses it completely. Object keys are content-addressed and hard to guess,
 which is obscurity, not access control.
 
 At startup the backend writes a probe object and tries to read it back with no
-credentials. If that succeeds it logs the problem and reports it in
-`/health` under `documents.WARNING`.
+credentials. If that succeeds it logs the problem and reports it in `/health`
+under `documents.WARNING`.
+
+Object keys carry a random segment and are never derivable from anything the API
+publishes. That matters because `contentHash` is deliberately readable by anyone
+— it is how a third party verifies what was approved — so a key shaped
+`drafts/<id>/<contentHash>` would be reconstructable by anyone who had read the
+metadata. It is defence in depth, not a substitute: a presigned link that leaks
+still resolves forever against a public bucket, where against a private one it
+expires in 60 seconds.
 
 ### Documents
 
