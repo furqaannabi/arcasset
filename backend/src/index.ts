@@ -118,7 +118,7 @@ app.route(
   intelRoutes(
     config, publicClient, wallet,
     deployment.NoteFactory, deployment.IssuanceQueue, deployment.RepaymentVault,
-    deployBlock,
+    deployment.ServicingRelay, deployBlock,
   ),
 );
 app.route("/documents", documentRoutes(storage, admins));

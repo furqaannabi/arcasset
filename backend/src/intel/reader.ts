@@ -1,5 +1,5 @@
 import type { Address, PublicClient } from "viem";
-import { noteAbi, noteFactoryAbi, queueAbi, vaultAbi } from "@/chain/abis";
+import { noteAbi, noteFactoryAbi, queueAbi, vaultAbi, relayAbi } from "@/chain/abis";
 import { getLogsChunked } from "./logs";
 import { NoteStatus, PeriodStatus } from "@/agent/decide";
 
@@ -45,6 +45,7 @@ export class IntelReader {
     private readonly factory: Address,
     private readonly queue?: Address,
     private readonly vault?: Address,
+    private readonly relay?: Address,
     /** Deployment block; nothing before it can concern these contracts. */
     private readonly fromBlock: bigint = 0n,
   ) {}
@@ -163,6 +164,103 @@ export class IntelReader {
     };
   }
 
+  async timeline(note: Address): Promise<NoteTimeline> {
+    if (!this.vault || !this.relay) {
+      throw new Error("timelines need the RepaymentVault and ServicingRelay addresses");
+    }
+    const head = await this.client.getBlockNumber();
+    const [noteId, originator, borrower, status, terms] = await Promise.all([
+      this.client.readContract({ address: note, abi: noteAbi, functionName: "noteId" }),
+      this.client.readContract({ address: note, abi: noteAbi, functionName: "originator" }),
+      this.client.readContract({ address: note, abi: noteAbi, functionName: "borrower" }),
+      this.client.readContract({ address: note, abi: noteAbi, functionName: "status" }),
+      this.client.readContract({ address: note, abi: noteAbi, functionName: "terms" }),
+    ]);
+
+    const ends = new Map<number, number>();
+    for (let i = 0; i < terms.periodCount; i++) {
+      const bounds = await this.client.readContract({
+        address: note, abi: noteAbi, functionName: "periodBounds", args: [i],
+      });
+      ends.set(i, Number(bounds[1]));
+    }
+
+    const window = { fromBlock: this.fromBlock, toBlock: head, args: { noteId } };
+    const [repaid, settled, delinquent, defaulted] = await Promise.all([
+      getLogsChunked(this.client, { address: this.vault, event: vaultAbi[0] as never, ...window }),
+      getLogsChunked(this.client, { address: this.relay, event: relayAbi[4] as never, ...window }),
+      getLogsChunked(this.client, { address: this.relay, event: relayAbi[5] as never, ...window }),
+      getLogsChunked(this.client, { address: this.relay, event: relayAbi[6] as never, ...window }),
+    ]);
+
+    const entries: TimelineEntry[] = [];
+    const base = (l: unknown) => {
+      const log = l as { blockNumber: bigint; transactionHash: string };
+      return { block: Number(log.blockNumber), txHash: log.transactionHash };
+    };
+
+    for (const l of repaid) {
+      const a = (l as unknown as { args: { periodIndex: number; payer: string; amount: bigint; timestamp: bigint; onTime: boolean } }).args;
+      entries.push({
+        kind: "repaid",
+        periodIndex: Number(a.periodIndex),
+        timestamp: Number(a.timestamp),
+        amount: a.amount.toString(),
+        payer: a.payer,
+        // Who actually paid is the most interesting column here. A borrower
+        // paying their own note and an originator covering it are different
+        // facts, and only the servicer sees the difference.
+        byBorrower: a.payer.toLowerCase() === borrower.toLowerCase(),
+        byOriginator: a.payer.toLowerCase() === originator.toLowerCase(),
+        onTime: a.onTime,
+        ...base(l),
+      });
+    }
+
+    for (const l of settled) {
+      const a = (l as unknown as { args: { periodIndex: number; distributed: bigint; servicingFee: bigint; timestamp: bigint } }).args;
+      const index = Number(a.periodIndex);
+      const end = ends.get(index) ?? 0;
+      entries.push({
+        kind: "settled",
+        periodIndex: index,
+        timestamp: Number(a.timestamp),
+        amount: a.distributed.toString(),
+        servicingFee: a.servicingFee.toString(),
+        // Floored at zero: settling early is not negative lateness, it is
+        // on time, and a negative number here would poison any average.
+        latenessSeconds: Math.max(0, Number(a.timestamp) - end),
+        ...base(l),
+      });
+    }
+
+    for (const l of delinquent) {
+      const a = (l as unknown as { args: { periodIndex: number; shortfall: bigint; timestamp: bigint } }).args;
+      entries.push({
+        kind: "delinquent",
+        periodIndex: Number(a.periodIndex),
+        timestamp: Number(a.timestamp),
+        amount: a.shortfall.toString(),
+        ...base(l),
+      });
+    }
+
+    for (const l of defaulted) {
+      const a = (l as unknown as { args: { timestamp: bigint } }).args;
+      entries.push({ kind: "defaulted", periodIndex: null, timestamp: Number(a.timestamp), ...base(l) });
+    }
+
+    // Chronological, and stable within a block so two events in one
+    // transaction do not swap order between calls.
+    entries.sort((x, y) => x.block - y.block || x.timestamp - y.timestamp);
+
+    return {
+      note, noteId: noteId.toString(), originator, borrower,
+      status: Number(status), decimals: 18,
+      entries, latencyAvailable: true, asOfBlock: Number(head),
+    };
+  }
+
   async borrower(address: Address): Promise<BorrowerScorecard> {
     const [count, block] = await Promise.all([
       this.client.readContract({ address: this.factory, abi: noteFactoryAbi, functionName: "noteCount" }),
@@ -251,5 +349,44 @@ export type OriginatorScorecard = {
     selfCuredPeriods: number;
     selfCureRate: number | null;
   };
+  asOfBlock: number;
+};
+
+/**
+ * Every repayment and every servicing action on one note, in order, with
+ * lateness measured against the period it belongs to.
+ *
+ * The cheapest endpoint, because it is the one that makes the agent's work
+ * legible — a buyer can see what was decided, when, and how late the money
+ * actually was. This is also the only reader that can compute lateness at all:
+ * it comes from event timestamps, which is why the scorecards report
+ * `latencyAvailable: false` and this does not.
+ */
+export type TimelineEntry = {
+  kind: "repaid" | "settled" | "delinquent" | "defaulted";
+  periodIndex: number | null;
+  timestamp: number;
+  block: number;
+  txHash: string;
+  /** 18dp native base units. */
+  amount?: string;
+  payer?: string;
+  byBorrower?: boolean;
+  byOriginator?: boolean;
+  onTime?: boolean;
+  servicingFee?: string;
+  /** Seconds past the period end, floored at zero. Only on settlements. */
+  latenessSeconds?: number;
+};
+
+export type NoteTimeline = {
+  note: Address;
+  noteId: string;
+  originator: Address;
+  borrower: Address;
+  status: number;
+  decimals: 18;
+  entries: TimelineEntry[];
+  latencyAvailable: true;
   asOfBlock: number;
 };

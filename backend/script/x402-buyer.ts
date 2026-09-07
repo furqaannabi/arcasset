@@ -37,7 +37,8 @@ const erc20 = [
 ] as const;
 
 const PATH = process.env["TARGET_PATH"] ?? "borrower";
-const url = `${API}/intel/${PATH}/${TARGET}`;
+const SUFFIX = process.env["TARGET_SUFFIX"] ?? "";
+const url = `${API}/intel/${PATH}/${TARGET}${SUFFIX}`;
 const buyerUsdc = await pub.readContract({ address: USDC, abi: erc20, functionName: "balanceOf", args: [account.address] });
 console.log(`\nbuyer ${account.address}`);
 console.log(`  code: ${(await pub.getCode({ address: account.address })) ?? "(none — a plain EOA)"}`);
@@ -92,9 +93,22 @@ const body = await second.json();
 ok("200 OK", second.status === 200, `got ${second.status}: ${JSON.stringify(body).slice(0, 160)}`);
 ok("PAYMENT-RESPONSE header present", Boolean(second.headers.get("PAYMENT-RESPONSE")));
 if (second.status === 200) {
-  ok("data is about the party asked for", String(body.borrower ?? body.originator).toLowerCase() === TARGET.toLowerCase());
+  ok("data is about the subject asked for", String(body.note ?? body.borrower ?? body.originator).toLowerCase() === TARGET.toLowerCase(), JSON.stringify({note: body.note, borrower: body.borrower, originator: body.originator}));
   ok("carries asOfBlock so the buyer can reproduce it", typeof body.asOfBlock === "number");
-  if (body.book) {
+  if (body.entries) {
+    console.log(`     ${body.entries.length} events, latencyAvailable ${body.latencyAvailable}`);
+    for (const e of body.entries) {
+      const who = e.byOriginator ? " by ORIGINATOR" : e.byBorrower ? " by borrower" : e.payer ? " by third party" : "";
+      const late = e.latenessSeconds !== undefined ? ` late ${e.latenessSeconds}s` : "";
+      console.log(`       p${e.periodIndex ?? "-"} ${String(e.kind).padEnd(11)}${who}${late}`);
+    }
+    const want = Number(process.env["EXPECT_EVENTS"] ?? "-1");
+    if (want >= 0) ok(`timeline has ${want} events`, body.entries.length === want, String(body.entries.length));
+    if (process.env["EXPECT_SELF_CURE_EVENT"] === "true")
+      ok("a repayment by the originator is visible", body.entries.some((e: any) => e.kind === "repaid" && e.byOriginator));
+    if (process.env["EXPECT_LATENESS"] === "true")
+      ok("settlements carry lateness", body.entries.filter((e: any) => e.kind === "settled").every((e: any) => typeof e.latenessSeconds === "number"));
+  } else if (body.book) {
     console.log(`     minted ${body.notesMinted}, periodsMissed ${body.book.periodsMissed}, selfCured ${body.book.selfCuredPeriods}, selfCureRate ${body.book.selfCureRate}`);
     const wantSelfCured = Number(process.env["EXPECT_SELF_CURED"] ?? "-1");
     if (wantSelfCured >= 0) ok(`selfCuredPeriods is ${wantSelfCured}`, body.book.selfCuredPeriods === wantSelfCured, String(body.book.selfCuredPeriods));

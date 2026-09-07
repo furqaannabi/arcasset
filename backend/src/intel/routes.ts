@@ -10,6 +10,8 @@ import type { Config } from "@/config";
 export const PRICES = {
   "/intel/borrower": "500000", // $0.50
   "/intel/originator": "1000000", // $1.00 — book quality is the question a capital allocator has
+  // Cheapest on purpose: it is the endpoint that makes the agent's work legible.
+  "/intel/note": "250000", // $0.25
 } as const;
 
 function networkName(chainId: number): string {
@@ -23,10 +25,11 @@ export function intelRoutes(
   factory: Address,
   queue?: Address,
   vault?: Address,
+  relay?: Address,
   fromBlock?: bigint,
 ): Hono {
   const app = new Hono();
-  const reader = new IntelReader(publicClient, factory, queue, vault, fromBlock);
+  const reader = new IntelReader(publicClient, factory, queue, vault, relay, fromBlock);
 
   /** Free, so an agent can discover the cost before committing to anything. */
   app.get("/pricing", (c) =>
@@ -41,6 +44,12 @@ export function intelRoutes(
           path: "/intel/borrower/:address",
           price: PRICES["/intel/borrower"],
           description: "Repayment behaviour for one borrower — does this counterparty pay on time",
+        },
+        {
+          path: "/intel/note/:address/timeline",
+          price: PRICES["/intel/note"],
+          description:
+            "Every repayment and servicing action on one note, in order, with lateness and who actually paid",
         },
         {
           path: "/intel/originator/:address",
@@ -61,6 +70,19 @@ export function intelRoutes(
       config.usdcErc20,
       config.chainId,
       BigInt(process.env["MAX_SETTLE_GAS"] ?? "500000"),
+    );
+
+    app.use(
+      "/note/:address/timeline",
+      paywall({
+        now: async () => Number((await publicClient.getBlock({ blockTag: "latest" })).timestamp),
+        payTo: config.intelPayTo,
+        asset: config.usdcErc20,
+        network: networkName(config.chainId),
+        settler,
+        price: () => PRICES["/intel/note"],
+        description: "Note servicing timeline",
+      }),
     );
 
     app.use(
@@ -100,6 +122,27 @@ export function intelRoutes(
       );
     }
     return c.json(await reader.borrower(address));
+  });
+
+  app.get("/note/:address/timeline", async (c) => {
+    const address = c.req.param("address");
+    if (!isAddress(address)) return c.json({ error: "not_found", message: "not an address" }, 404);
+    if (!config.intelPayTo || !wallet) {
+      return c.json(
+        { error: "unavailable", message: "INTEL_PAY_TO or AGENT_PRIVATE_KEY unset — the paid API is not configured" },
+        503,
+      );
+    }
+    try {
+      return c.json(await reader.timeline(address));
+    } catch (err) {
+      // A bad address looks like a contract that does not answer noteId().
+      const message = String(err);
+      if (message.includes("returned no data") || message.includes("reverted")) {
+        return c.json({ error: "not_found", message: "not an ArcAsset note" }, 404);
+      }
+      return c.json({ error: "upstream_lagging", message }, 503);
+    }
   });
 
   app.get("/originator/:address", async (c) => {

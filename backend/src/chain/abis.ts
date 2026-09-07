@@ -12,6 +12,8 @@ export const noteFactoryAbi = [
 export const noteAbi = [
   { type: "function", name: "status", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
   { type: "function", name: "originator", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "borrower", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "noteId", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "firstMissedAt", stateMutability: "view", inputs: [], outputs: [{ type: "uint64" }] },
   { type: "function", name: "periodsSettled", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] },
   { type: "function", name: "periodsMissed", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] },
@@ -59,6 +61,33 @@ export const relayAbi = [
   { type: "function", name: "settlePeriod", stateMutability: "nonpayable", inputs: [{ type: "uint256" }, { type: "uint16" }], outputs: [] },
   { type: "function", name: "markDelinquent", stateMutability: "nonpayable", inputs: [{ type: "uint256" }, { type: "uint16" }], outputs: [] },
   { type: "function", name: "markDefaulted", stateMutability: "nonpayable", inputs: [{ type: "uint256" }], outputs: [] },
+  {
+    type: "event", name: "PeriodSettled",
+    inputs: [
+      { name: "noteId", type: "uint256", indexed: true },
+      { name: "periodIndex", type: "uint16", indexed: true },
+      { name: "distributed", type: "uint256", indexed: false },
+      { name: "servicingFee", type: "uint256", indexed: false },
+      { name: "timestamp", type: "uint64", indexed: false },
+    ],
+  },
+  {
+    type: "event", name: "MarkedDelinquent",
+    inputs: [
+      { name: "noteId", type: "uint256", indexed: true },
+      { name: "periodIndex", type: "uint16", indexed: true },
+      { name: "shortfall", type: "uint256", indexed: false },
+      { name: "timestamp", type: "uint64", indexed: false },
+    ],
+  },
+  {
+    type: "event", name: "Defaulted",
+    inputs: [
+      { name: "noteId", type: "uint256", indexed: true },
+      { name: "periodsMissed", type: "uint16", indexed: false },
+      { name: "timestamp", type: "uint64", indexed: false },
+    ],
+  },
 ] as const;
 
 export const vaultAbi = [

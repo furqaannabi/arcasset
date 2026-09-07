@@ -178,6 +178,7 @@ Two priced endpoints:
 |---|---|---|
 | `GET /intel/borrower/:address` | **$0.50** | Does this counterparty pay on time |
 | `GET /intel/originator/:address` | **$1.00** | Do the loans this party writes perform |
+| `GET /intel/note/:address/timeline` | **$0.25** | Every repayment and servicing action on one note, in order |
 
 The originator scorecard costs more because it answers the question a capital
 allocator actually has, and it carries one field nobody outside the servicer can
@@ -191,7 +192,31 @@ only misses still outstanding because the contract decrements it on a cure.
 Using that would drop every cured miss out of the denominator and divide by zero
 in precisely the case the field exists to describe.
 
-Both are paid with x402.
+The timeline is cheapest on purpose: it is the endpoint that makes the agent's
+work legible, and the only one that reports real lateness — that comes from
+event timestamps, which is why the scorecards carry `latencyAvailable: false`
+and this carries `true`.
+
+```jsonc
+// GET /intel/note/:address/timeline
+{ "note": "0x…", "noteId": "1", "originator": "0x…", "borrower": "0x…",
+  "decimals": 18, "latencyAvailable": true, "asOfBlock": 1234,
+  "entries": [
+    { "kind": "repaid",     "periodIndex": 0, "byBorrower": true,  "onTime": true },
+    { "kind": "settled",    "periodIndex": 0, "latenessSeconds": 0 },
+    { "kind": "delinquent", "periodIndex": 1, "amount": "…" },
+    { "kind": "repaid",     "periodIndex": 1, "byOriginator": true },
+    { "kind": "settled",    "periodIndex": 1, "latenessSeconds": 120 }
+  ] }
+```
+
+`byBorrower` and `byOriginator` are the interesting columns. A borrower paying
+their own note and an originator quietly covering it are different facts, and
+only the servicer sees the difference. `latenessSeconds` is floored at zero —
+settling early is on time, not negative lateness, which would poison any average
+computed from it.
+
+All three are paid with x402.
 
 ```
 1. GET with no payment            → 402 + PAYMENT-REQUIRED (base64 requirements)

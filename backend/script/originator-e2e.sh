@@ -39,7 +39,10 @@ VAULT=$(g RepaymentVault); RELAY=$(g ServicingRelay)
 USDC=$(cd "$ROOT/contracts" && forge create script/MockEIP3009Token.sol:MockEIP3009Token \
   --rpc-url $RPC --private-key $DEPLOYER_PK --broadcast --json 2>/dev/null \
   | python3 -c 'import json,sys;print(json.load(sys.stdin)["deployedTo"])')
+BUYER2_PK=$(cast wallet new --json | python3 -c 'import json,sys;print(json.load(sys.stdin)[0]["private_key"])')
+BUYER2=$(cast wallet address $BUYER2_PK); fund "$BUYER2"
 send $DEPLOYER_PK $USDC 'mint(address,uint256)' $BUYER 1000000000
+send $DEPLOYER_PK $USDC 'mint(address,uint256)' $BUYER2 1000000000
 
 step "A note that goes delinquent, and is cured by the originator"
 send $DEPLOYER_PK $REG 'verify(address,bytes)' $O "$(cast abi-encode 'f(address,bytes32)' $O $(cast keccak o))"
@@ -78,3 +81,11 @@ for _ in $(seq 1 40); do curl -sf http://localhost:$PORT/health >/dev/null 2>&1 
 RPC_URL=$RPC API=http://localhost:$PORT BUYER_KEY=$BUYER_PK TARGET=$O CHAIN_ID=31337 USDC_ERC20=$USDC \
   TARGET_PATH=originator EXPECT_SELF_CURED=1 EXPECT_SELF_CURE_RATE=1 \
   bun run script/x402-buyer.ts
+ORIG_RESULT=$?
+
+step "Buying the note's timeline"
+RPC_URL=$RPC API=http://localhost:$PORT BUYER_KEY=$BUYER2_PK \
+  TARGET=$NOTE CHAIN_ID=31337 USDC_ERC20=$USDC TARGET_PATH=note TARGET_SUFFIX=/timeline \
+  EXPECT_SELF_CURE_EVENT=true EXPECT_LATENESS=true \
+  bun run script/x402-buyer.ts
+exit $(( ORIG_RESULT + $? ))
