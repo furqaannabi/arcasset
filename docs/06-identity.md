@@ -142,17 +142,22 @@ So changing it means redeploying everything, with new addresses in
 `deployments/5042002.json`, a new `startBlock` in the subgraph manifest, and a
 fresh Studio deploy.
 
-**Consequence: do not seed testnet history before this lands.** Any note,
-repayment or verification created against the current addresses is orphaned by
-the redeploy, and the subgraph would keep indexing contracts nobody uses.
+**Consequence, now discharged: seeding was held until this landed.** It has
+landed, so testnet history can be created against the current addresses.
+
+The subgraph half of that redeploy is a separate step and was missed for
+several hours: the manifest was corrected in the repo but not published, so
+Studio kept serving a build pinned to the dead addresses — healthy, no
+indexing errors, and empty. `subgraph/script/sync-addresses.ts` now gates
+`deploy:studio` on the manifest matching the deployment file. Redeploy the
+subgraph whenever the contracts move; the repo being right is not the same as
+the endpoint being right.
 
 ### What is deployed today
 
-`PersonhoodVerifier` on Arc testnet is `MockVerifier` from
-`contracts/script/` — the deploy script logs "WARNING: deployed MockVerifier.
-It proves nothing." It accepts `abi.encode(party, humanSecret)` and derives a
-nullifier from the secret. Useful for exercising the lifecycle; it must not
-reach the demo while we claim Selfie Check gates issuance.
+`PersonhoodVerifier` on Arc testnet is `AttestedVerifier`
+(`0xDAce270A9991E838bC858884156022fd5ae43aDa`). `MockVerifier` is no longer
+deployed anywhere and a proof in its shape reverts.
 
 ## The borrower verifies first, and this is backwards from an invite
 

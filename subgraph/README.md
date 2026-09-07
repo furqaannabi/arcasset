@@ -36,18 +36,23 @@ bun run deploy:studio                     # prompts for a version label
 Deployed and indexing as of v0.0.1:
 
 ```
-https://api.studio.thegraph.com/query/1758626/arcasset/v0.0.1
+https://api.studio.thegraph.com/query/1758626/arcasset/v0.0.3
 ```
 
 That is Studio's development endpoint — free, rate-limited, no API key needed.
 It is what `NEXT_PUBLIC_SUBGRAPH_URL` points at. The version segment changes on
 every deploy, so bump it in `web/.env` when you redeploy.
 
-The addresses and `startBlock` in `subgraph.yaml` are pinned to the current
-Arc testnet deployment in `contracts/deployments/5042002.json`
-(`startBlock: 60708288`, the block the first contract in that deploy landed
-in). If contracts are redeployed, regenerate this manifest from that file
-rather than hand-editing addresses — see "Redeploying contracts" below.
+The addresses and `startBlock` in `subgraph.yaml` come from
+`contracts/deployments/<chainId>.json` via `bun run sync`, and
+`deploy:studio` runs `sync:check` first so a manifest that has drifted from
+the deployment cannot be published.
+
+Take that guard seriously: a redeploy orphans the manifest *silently*. Studio
+keeps reporting healthy with no indexing errors while every consumer reads an
+empty world. It has already happened once — the Sep 7 verifier swap moved all
+seven contracts, and the live subgraph kept indexing the dead set until it was
+redeployed.
 
 ## Local development (Anvil + graph-node)
 
