@@ -66,7 +66,13 @@ contract MockEIP3009Token {
 
         bytes32 structHash = keccak256(
             abi.encode(
-                TRANSFER_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce
+                TRANSFER_WITH_AUTHORIZATION_TYPEHASH,
+                from,
+                to,
+                value,
+                validAfter,
+                validBefore,
+                nonce
             )
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), structHash));
