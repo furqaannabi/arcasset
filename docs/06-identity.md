@@ -1,8 +1,9 @@
 # 07 — Identity
 
-**Status: Spec — blocked. The on-chain verification this describes is not
-possible on Arc; see [the constraint](#the-on-chain-check-we-assumed-does-not-exist)
-before building against it.**
+**Status: Spec — resolved Sep 7. On-chain proof verification is not possible on
+Arc, exactly as [the constraint](#the-on-chain-check-we-assumed-does-not-exist)
+describes. The attested path was taken, is deployed, and is
+[exercised on the live chain](#resolution-attested-verification-is-live).**
 
 World Selfie Check gates both write-side roles — originating and borrowing.
 Holding stays open to anyone.
@@ -40,7 +41,10 @@ it is what makes the dataset mean anything.
 
 ## The on-chain check we assumed does not exist
 
-**Status: unresolved. Nothing can pass the gate until this is decided.**
+**Status: resolved. The finding stands; the attested path was chosen and
+shipped. Kept in full because the reasoning is why the weaker design is the
+right one, and a reader who does not have it will try to "fix" this back into
+on-chain verification.**
 
 This spec originally described the standard World ID pattern: the client gets a
 proof, submits it to `PartyRegistry.verify(party, proof)`, and the registry
@@ -96,10 +100,38 @@ The alternatives are worse. Orb-only verifies on-chain but still not on Arc, so
 it would need cross-chain proof relaying — out of scope, and too few people are
 Orb-verified to demo live. Keeping the mock means World contributes nothing.
 
+### Resolution: attested verification is live
+
+`AttestedVerifier` is deployed on Arc testnet at
+`0xDAce270A9991E838bC858884156022fd5ae43aDa`, and `PartyRegistry`
+(`0x8707609D5d759210bc65c5A1dd55ca5323c5a5E2`) points at it. The mock is gone —
+a proof in the mock's old shape now reverts.
+
+Exercised against the live chain rather than argued:
+
+| | |
+|---|---|
+| A real attestation, signed by the attestor | accepted; party verified, nullifier recorded |
+| The same attestation replayed onto another address | `WrongAttestor()` — bound to one address, so it fails the signature check before the nullifier is reached |
+| A **freshly and validly signed** attestation for another address, same nullifier | verifier accepts it, registry refuses with `NullifierUsed()` |
+
+That last row is the one that matters. The signature is genuinely valid, and the
+registry still refuses — so the property everything downstream rests on holds
+on-chain under the attested design, not just under the design we could not build.
+
+`WorldIDVerifier` is written and tested against a mock router. It is the right
+shape and becomes usable the moment a Router exists on Arc, and Orb-only remains
+its limitation even then.
+
 ### Swapping the verifier forces a full redeploy
 
 `PartyRegistry.verifier` is `immutable`, and every contract downstream stores
 its dependency the same way:
+
+**Done, at zero cost.** The swap happened on Sep 7 with the deployment holding
+no state — zero notes and zero proposals — so nothing was stranded. Checked
+before redeploying rather than after. Total gas across both deployments was
+0.38 USDC.
 
 ```
 new verifier → new PartyRegistry → new IssuanceQueue → new NoteFactory

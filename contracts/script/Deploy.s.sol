@@ -13,6 +13,7 @@ import {INoteFactory} from "../src/interfaces/INoteFactory.sol";
 import {INoteRegistry} from "../src/interfaces/INoteRegistry.sol";
 import {IPersonhoodVerifier} from "../src/interfaces/IPersonhoodVerifier.sol";
 import {MockVerifier} from "./MockVerifier.sol";
+import {AttestedVerifier} from "../src/verifiers/AttestedVerifier.sol";
 
 /// @notice Deploys the whole set and wires it.
 ///
@@ -38,6 +39,20 @@ contract Deploy is Script {
             vm.startBroadcast(pk);
         }
 
+        // Three ways to get a verifier, in descending order of how much the
+        // chain is actually checking.
+        //
+        //   VERIFIER  — an address already deployed. Use it as given.
+        //   ATTESTOR  — deploy AttestedVerifier trusting that signer. The
+        //               shippable path on Arc, where there is no World ID
+        //               Router, and weaker than on-chain proof verification.
+        //   neither   — MockVerifier, which proves nothing and says so.
+        address attestor = vm.envOr("ATTESTOR", address(0));
+        if (verifierAddr == address(0) && attestor != address(0)) {
+            verifierAddr = address(new AttestedVerifier(attestor));
+            console.log("AttestedVerifier: personhood is asserted by", attestor);
+            console.log("  a compromise of that key breaks the sybil defence entirely");
+        }
         if (verifierAddr == address(0)) {
             verifierAddr = address(new MockVerifier());
             console.log("WARNING: deployed MockVerifier. It proves nothing.");
@@ -69,6 +84,7 @@ contract Deploy is Script {
         console.log("ServicingRelay ", address(relay));
         console.log("Offering       ", address(offering));
         console.log("Verifier       ", verifierAddr);
+        console.log("Attestor       ", attestor);
 
         _write(
             address(registry),

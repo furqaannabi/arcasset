@@ -13,18 +13,18 @@ services notes unattended; the paid API takes money from a cold wallet.
 
 | | |
 |---|---|
-| `contracts/` | 7 deployed and **verified** on Arc testnet. 115 tests, plus a 37-assertion run against a live node |
+| `contracts/` | 7 deployed and **verified** on Arc testnet, with a real personhood verifier. 126 tests, plus a 37-assertion run against a live node |
 | `backend/` | Agent, x402 paid API, document upload. 56 tests and three end-to-end suites |
 | `web/` | Next.js 16, `/propose` built with live schedule preview. 28 tests |
 | `subgraph/` | Not started. The agent and API read chain directly meanwhile — see [One index, three consumers](#one-index-three-consumers) |
 | Specs | [docs/](docs/), eight documents. Read the relevant one before changing an interface |
 
-**The deployed personhood verifier is a mock.** It accepts any well-formed proof,
-so `PartyRegistry` is currently no sybil defence at all — anyone can verify any
-address. Everything downstream is built and tested against it, but the claim
-that "two verified addresses are two humans" is not true on-chain until a World
-Selfie Check adapter replaces it. That is the largest gap between what this
-system does and what it says.
+**The deployed personhood verifier trusts an attestor.** It is a real signature
+check rather than the mock that accepted anything, and the sybil property holds
+on-chain — verified against the live deployment. But personhood is asserted by a
+key we hold rather than proved by a Semaphore proof, because Arc has no World ID
+Router. That is the largest remaining gap between what this system does and what
+it says, and it is [described in full below](#deployed--arc-testnet-chain-5042002).
 
 Screenshots go here once there is live state worth showing. A mockup dressed as
 a screenshot is the one thing this README will not carry.
@@ -181,23 +181,51 @@ Money is `bigint` integer arithmetic from the contract to the render call, and d
 
 ## Deployed — Arc testnet (chain 5042002)
 
-All seven deployed and **verified on Blockscout**, Sep 6.
+All seven deployed and **verified on Blockscout**, redeployed Sep 7 with a real
+personhood verifier.
 
 | Contract | Address | |
 |---|---|---|
-| `PartyRegistry` | [`0xEFa25395B840d6b241CF6fD71CC7089Be3ba805e`](https://testnet.arcscan.app/address/0xEFa25395B840d6b241CF6fD71CC7089Be3ba805e) | One human, one address |
-| `IssuanceQueue` | [`0xf02774ee2dd08b85F69C113AaEEC62c3Df4745c0`](https://testnet.arcscan.app/address/0xf02774ee2dd08b85F69C113AaEEC62c3Df4745c0) | propose → accept → approve → mint |
-| `NoteFactory` | [`0x68D84290353516cC6b67b6b0D252BE32F1059E4d`](https://testnet.arcscan.app/address/0x68D84290353516cC6b67b6b0D252BE32F1059E4d) | Deploys notes at a CREATE2 address |
-| `RepaymentVault` | [`0x6e27DF0BDE231a2f1864Ee7C9D82508Fa1C260be`](https://testnet.arcscan.app/address/0x6e27DF0BDE231a2f1864Ee7C9D82508Fa1C260be) | Holds value between repayment and distribution |
-| `ServicingRelay` | [`0xc190e6F26cE14e40D30251fDe25927A73a5D58b6`](https://testnet.arcscan.app/address/0xc190e6F26cE14e40D30251fDe25927A73a5D58b6) | The agent's only reachable surface |
-| `Offering` | [`0xf6190fF134BE3222bc90D618466a55c14397BB5b`](https://testnet.arcscan.app/address/0xf6190fF134BE3222bc90D618466a55c14397BB5b) | List, reprice, delist, buy |
-| `PersonhoodVerifier` | [`0x84388e1bB22727b73Fe2791fF4d6F1cB0CE6f7dd`](https://testnet.arcscan.app/address/0x84388e1bB22727b73Fe2791fF4d6F1cB0CE6f7dd) | ⚠ MockVerifier — proves nothing yet |
+| `PartyRegistry` | [`0x8707609D5d759210bc65c5A1dd55ca5323c5a5E2`](https://testnet.arcscan.app/address/0x8707609D5d759210bc65c5A1dd55ca5323c5a5E2) | One human, one address |
+| `IssuanceQueue` | [`0x33C3Da08E7e214c9F02Dae4C92D0CD55747f8181`](https://testnet.arcscan.app/address/0x33C3Da08E7e214c9F02Dae4C92D0CD55747f8181) | propose → accept → approve → mint |
+| `NoteFactory` | [`0x8C054C0a11Eb9b03ecA160cECf5E68F60ad2E0Dd`](https://testnet.arcscan.app/address/0x8C054C0a11Eb9b03ecA160cECf5E68F60ad2E0Dd) | Deploys notes at a CREATE2 address |
+| `RepaymentVault` | [`0xD8f1c0e1905E73ed68f47608c99b9b1903F17536`](https://testnet.arcscan.app/address/0xD8f1c0e1905E73ed68f47608c99b9b1903F17536) | Holds value between repayment and distribution |
+| `ServicingRelay` | [`0xa11f810c650A19F2E6a74828dB73EA29B8C6904D`](https://testnet.arcscan.app/address/0xa11f810c650A19F2E6a74828dB73EA29B8C6904D) | The agent's only reachable surface |
+| `Offering` | [`0xF41B6a5354a8aB5B54Db0605F5bDbc2e15E5e5BB`](https://testnet.arcscan.app/address/0xF41B6a5354a8aB5B54Db0605F5bDbc2e15E5e5BB) | List, reprice, delist, buy |
+| `PersonhoodVerifier` | [`0xDAce270A9991E838bC858884156022fd5ae43aDa`](https://testnet.arcscan.app/address/0xDAce270A9991E838bC858884156022fd5ae43aDa) | `AttestedVerifier` — see the caveat below |
 
-Deployed and wired in one transaction batch by `contracts/script/deploy-testnet.sh`, which refuses to run unless the RPC reports chain 5042002. Every wiring edge was then checked by address against the live chain. Total gas: 0.18 USDC.
+Deployed and wired by `contracts/script/deploy-testnet.sh`, which refuses to run
+unless the RPC reports chain 5042002. Every wiring edge was then checked by
+address against the live chain, and the sybil property was then exercised on it
+rather than assumed:
 
-`PersonhoodVerifier` is a stand-in until the World Selfie Check adapter lands. It lives in `script/`, not `src/`, and the deploy logs a warning when it deploys one — it must never be mistaken for something that proves personhood.
+- A real attestation was signed by the attestor and submitted. The registry
+  accepted the party and recorded the nullifier.
+- The **same attestation replayed onto a different address** reverts with
+  `WrongAttestor()` — an attestation is bound to one address, so it fails the
+  signature check before the nullifier is even considered.
+- A **freshly and validly signed** attestation for a different address carrying
+  the **same nullifier** is accepted by the verifier and then refused by the
+  registry with `NullifierUsed()`. That is the property everything downstream
+  rests on: one human cannot hold two verified addresses.
 
-Addresses live in `contracts/deployments/5042002.json`, the single source every package reads. Nothing hardcodes an address.
+Total gas across both deployments: 0.38 USDC.
+
+**The verifier is `AttestedVerifier`, and it is weaker than checking a proof
+on-chain.** There is no World ID Router on Arc, so a Semaphore proof cannot be
+verified here — `WorldIDVerifier` is written and tested and becomes usable the
+moment a router exists. Until then the backend verifies with World off-chain and
+signs an attestation, and the contract checks that signature. Everything
+downstream is unchanged: one nullifier per address, never freed, so two verified
+addresses are still two humans as far as the chain can tell. But the attestor is
+trusted, and whoever holds that key can mint distinct nullifiers at will — the
+chain is checking that a particular server said so, not checking personhood.
+Attestations expire, the attestor is immutable, and each is bound to one address;
+none of that makes it equivalent, and a test asserts the compromise case
+explicitly.
+
+Addresses live in `contracts/deployments/5042002.json`, the single source every
+package reads. Nothing hardcodes an address.
 
 `RWANote` is deployed per note by `NoteFactory` at a CREATE2 address, so the UI can route to a note before its transaction confirms.
 
@@ -232,7 +260,7 @@ on missing imports rather than on anything you did.
 ```bash
 cd contracts
 forge build
-forge test                      # 115 tests
+forge test                      # 126 tests
 ./script/e2e.sh                 # 37 assertions against a live Anvil node
 ```
 
