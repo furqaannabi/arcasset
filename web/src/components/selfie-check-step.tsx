@@ -44,6 +44,18 @@ const LEVEL: VerificationLevel =
 
 const LEVEL_IS_WEAK = LEVEL === VerificationLevel.Device;
 
+/**
+ * Which World network to talk to. Staging apps can only be completed in the
+ * simulator, and the simulator rejects a request built against the production
+ * bridge with "production request detected" — the bridge is what carries the
+ * environment, not the app id.
+ *
+ * Unset means production. Set it to https://staging-bridge.worldcoin.org while
+ * the portal app is in Staging.
+ */
+const BRIDGE_URL = process.env.NEXT_PUBLIC_WORLD_BRIDGE_URL || undefined;
+const IS_STAGING = Boolean(BRIDGE_URL?.includes("staging"));
+
 type Attestation = { party: Address; nullifier: Hex; expiry: number; proof: Hex };
 
 type Phase =
@@ -181,6 +193,7 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
             // for one wallet cannot be replayed onto another.
             signal={party}
             verification_level={LEVEL}
+            bridge_url={BRIDGE_URL}
             onSuccess={onWorldSuccess}
           >
             {({ open }: { open: () => void }) => (
@@ -234,6 +247,11 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
           <span className={LEVEL_IS_WEAK ? "text-warn" : "text-muted"}>
             {LEVEL}
             {LEVEL_IS_WEAK ? " · device, not personhood" : ""}
+          </span>
+        </Row>
+        <Row label="Network">
+          <span className={IS_STAGING ? "text-warn" : "text-muted"}>
+            {IS_STAGING ? "staging · simulator only" : "production"}
           </span>
         </Row>
         {party ? (
