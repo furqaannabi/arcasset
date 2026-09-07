@@ -79,9 +79,10 @@ export function identityRoutes(opts: IdentityOptions): Hono {
       if (!isWorldProof(proof)) {
         return c.json({ error: "bad_proof", message: "expected a World verification payload" }, 400);
       }
-      // The signal binds the proof to this address at World's end too.
-      const signal = keccak256(encodePacked(["address"], [party as Address]));
-      const result = await verifyWithWorld(proof, opts.world, signal);
+      // The signal binds the proof to this address at World's end too. Sent
+      // raw: World hashes it with hashToField (keccak256 >> 8), so hashing it
+      // here would never match what IDKit bound into the proof.
+      const result = await verifyWithWorld(proof, opts.world, party);
       if (!result.ok) {
         const status = result.code === "world_unreachable" ? 503 : 400;
         return c.json({ error: result.code, message: result.detail }, status);
