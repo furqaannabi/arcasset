@@ -30,6 +30,8 @@ import {
 } from "./ui";
 import { StackBadge } from "./stack";
 import { ScheduleChart } from "./schedule-chart";
+import { usePropose, STEP_LABEL } from "@/lib/use-propose";
+import { txUrl } from "@/lib/chain";
 import {
   annualisedRate,
   formatBps,
@@ -151,11 +153,14 @@ function toTerms(d: Draft, now: number): { terms: Terms | null; parseError?: str
 
 export function ProposeForm() {
   const { address, isConnected } = useAccount();
-  const [docs, setDocs] = useState<DocumentEntry[]>([]);
+  // The hashed metadata drives the manifest preview; the File itself is what
+  // actually gets uploaded, so both are kept together.
+  const [docs, setDocs] = useState<(DocumentEntry & { file: File })[]>([]);
   const [docError, setDocError] = useState<string | null>(null);
   const documentHash = useMemo(() => manifestHash(docs), [docs]);
   const [draft, setDraft] = useState<Draft>(INITIAL);
   const [preset, setPreset] = useState<PresetKey>("advance");
+  const { propose, step, error: proposeError, result } = usePropose();
 
   function applyPreset(key: PresetKey) {
     setPreset(key);
@@ -193,10 +198,18 @@ export function ProposeForm() {
 
   const apr = terms ? annualisedRate(terms.couponBps, terms.periodLength) : 0;
   const blocked = !terms || errors.length > 0;
+  const busy = step !== "idle" && step !== "done";
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-      <form className="space-y-8" onSubmit={(e) => e.preventDefault()}>
+      <form
+        className="space-y-8"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (blocked || !terms) return;
+          void propose(terms, docs.map((d) => d.file));
+        }}
+      >
         <section className="space-y-4">
           <SectionHead
             index="A"
@@ -371,6 +384,7 @@ export function ProposeForm() {
               const accepted = picked.filter((f) => !rejectReason(f));
               const hashed = await Promise.all(
                 accepted.map(async (f) => ({
+                  file: f,
                   filename: f.name,
                   contentType: f.type,
                   byteSize: f.size,
@@ -420,15 +434,43 @@ export function ProposeForm() {
 
         </section>
 
-        <Button
-          type="submit"
-          tone="primary"
-          full
-          disabled
-          title="The seal-then-propose path is not wired up yet"
-        >
-          {blocked ? "Fix the errors above" : "Seal and propose"}
+        <Button type="submit" tone="primary" full disabled={blocked || busy}>
+          {busy
+            ? "Working…"
+            : blocked
+              ? "Fix the errors above"
+              : "Seal and propose"}
         </Button>
+
+        {busy ? (
+          <p className="font-mono text-[11px] text-muted" aria-live="polite">
+            {STEP_LABEL[step as Exclude<typeof step, "idle" | "done">]}
+          </p>
+        ) : null}
+
+        {proposeError ? (
+          <p className="font-mono text-[11px] text-danger" role="alert">
+            {proposeError}
+          </p>
+        ) : null}
+
+        {result ? (
+          <div className="rounded-card border border-accent/40 bg-accent-faint px-3.5 py-3">
+            <p className="eyebrow text-accent">Proposed</p>
+            <p className="mt-1.5 text-[12px] leading-relaxed text-ink/80">
+              The documents are sealed and the proposal is on-chain. It is now
+              the borrower&apos;s turn to accept.{" "}
+              <a
+                className="underline underline-offset-2"
+                href={txUrl(result.txHash)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View transaction
+              </a>
+            </p>
+          </div>
+        ) : null}
         <p className="text-[12px] leading-relaxed text-muted">
           Submitting is not wired up yet: sealing the draft has to upload these
           files and return the manifest hash before the transaction can be

@@ -43,10 +43,16 @@ export function manifestHash(entries: readonly DocumentEntry[]): Hex {
   return keccak256(concat(sorted));
 }
 
-/** Same bytes twice is one document, matching the server's unique constraint. */
-export function dedupe(entries: readonly DocumentEntry[]): DocumentEntry[] {
+/**
+ * Same bytes twice is one document, matching the server's unique constraint.
+ *
+ * Generic over the entry so callers can carry extra fields — the form keeps
+ * the File beside its hash, and a signature fixed to DocumentEntry would
+ * silently strip it.
+ */
+export function dedupe<T extends DocumentEntry>(entries: readonly T[]): T[] {
   const seen = new Set<string>();
-  const out: DocumentEntry[] = [];
+  const out: T[] = [];
   for (const e of entries) {
     const k = e.contentHash.toLowerCase();
     if (seen.has(k)) continue;
