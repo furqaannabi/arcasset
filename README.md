@@ -8,16 +8,30 @@ Built from scratch at ETHOnline 2026 (Sep 4–13) by Furqaan and Apurva.
 
 ## Status
 
-Day 3 of 10. Contracts are deployed and verified on Arc testnet; the agent
-services notes unattended; the paid API takes money from a cold wallet.
+Day 4 of 10. Contracts are deployed and verified on Arc testnet; the agent
+services notes unattended; all three paid endpoints take money from a cold
+wallet.
 
 | | |
 |---|---|
 | `contracts/` | 7 deployed and **verified** on Arc testnet, with a real personhood verifier. 126 tests, plus a 37-assertion run against a live node |
-| `backend/` | Agent, x402 paid API, document upload. 56 tests and three end-to-end suites |
-| `web/` | Next.js 16, `/propose` built with live schedule preview. 28 tests |
-| `subgraph/` | Not started. The agent and API read chain directly meanwhile — see [One index, three consumers](#one-index-three-consumers) |
+| `backend/` | Agent, verification, documents, and three x402 endpoints. 66 tests and five end-to-end suites |
+| `subgraph/` | 13 entities, 22 handlers, published to Studio. **Needs a redeploy** — see below |
+| `web/` | Next.js 16, five routes. 28 tests |
 | Specs | [docs/](docs/), eight documents. Read the relevant one before changing an interface |
+
+**The subgraph on Studio is indexing the previous contract set.** The verifier
+swap redeployed all seven, and the published manifest still points at the old
+addresses — which fails silently, because Studio reports healthy and simply
+returns an empty world. The manifest in this repo is fixed and derives its
+addresses from `contracts/deployments/<chainId>.json`, but it takes a
+`bun run deploy:studio` to matter.
+
+Until that lands, **the agent and the paid API read contracts directly over
+RPC** rather than through the subgraph. That works and is tested; it is also
+the wrong shape at any real scale, and it is why the scorecards report
+`latencyAvailable: false` — lateness lives in event timestamps that only the
+indexer aggregates.
 
 **The deployed personhood verifier trusts an attestor.** It is a real signature
 check rather than the mock that accepted anything, and the sybil property holds
@@ -132,9 +146,22 @@ page.
 
 ### One index, three consumers
 
-The subgraph is not a reporting layer bolted on at the end. It is the agent's decision surface.
+The subgraph is not a reporting layer bolted on at the end. It is meant to be
+the agent's decision surface.
 
-The agent keeps no database. It queries the subgraph, decides, and acts — so if it dies, the state is intact on-chain and a replacement holding the same delegation resumes from the same index. The web app reads the same subgraph. The paid API is built from it. Delinquency counts and punctuality are maintained incrementally in the handlers, so no query has to scan the repayment history to answer.
+The agent keeps no database. It reads, decides, and acts — so if it dies, the
+state is intact on-chain and a replacement holding the same delegation resumes
+from the same view. The web app reads the same index. The paid API is built from
+it. Delinquency counts and punctuality are maintained incrementally in the
+handlers, so no query has to scan the repayment history to answer.
+
+**That is the design, and today only half of it is true.** The subgraph exists
+and is written, but the agent reads contracts directly over RPC through a
+`NoteSource` interface, and the intel readers walk every note and period one
+call at a time. Both are correct and both are tested; neither is what the
+paragraph above describes. The interface is there so switching is a change of
+implementation rather than a rewrite — but until it is switched, "one index,
+three consumers" is a claim about the design and not about what is running.
 
 The tradeoff is that everything downstream must tolerate lag rather than assume freshness. The agent skips a tick entirely when the indexer is more than 200 blocks behind; the UI shows the lag in a banner rather than quietly serving old numbers.
 
@@ -300,9 +327,15 @@ Two things are off until you configure them, and `/health` says which:
   works by hand.
 - **No `INTEL_PAY_TO`** — the paid API returns `503` rather than serving unpaid.
 
-To watch the agent actually work, `./script/agent-e2e.sh`: it builds a note on
-Anvil, delegates it, repays a period, starts the backend, and then touches
-nothing. The period settles in about a second.
+Five end-to-end suites, each starting and stopping its own Anvil:
+
+| | |
+|---|---|
+| `./script/agent-e2e.sh` | Builds a note, delegates it, repays a period, starts the backend and then touches nothing. It settles in about a second |
+| `./script/x402-e2e.sh` | A freshly generated wallet is quoted, signs, is served, and cannot spend the same authorization twice |
+| `./script/identity-e2e.sh` | A wallet signs in, is attested, and is verified on-chain |
+| `./script/originator-e2e.sh` | An originator covering their own borrower's miss, read back through both paid endpoints |
+| `bun run script/documents-e2e.ts` | Upload, seal, and who can read the agreement (needs a backend already running) |
 
 ### Web
 
@@ -314,8 +347,28 @@ bun run dev                     # :3000
 bun test                        # 28 tests, mostly over money formatting
 ```
 
-`NEXT_PUBLIC_SUBGRAPH_URL` is unset until the subgraph is published, and the
-views say so rather than spinning forever.
+`NEXT_PUBLIC_SUBGRAPH_URL` points at Studio. Until the subgraph is redeployed
+against the current contracts it answers with an empty world rather than an
+error, which is the more confusing of the two failures — check
+`_meta { block { number } }` against the deploy block if a page looks empty for
+no reason.
+
+### Subgraph
+
+```bash
+cd subgraph
+bun install
+bun run sync          # addresses from contracts/deployments/<chainId>.json
+bun run codegen && bun run build
+graph auth <deploy-key>
+bun run deploy:studio # sync:check runs first and refuses a stale manifest
+```
+
+The manifest hardcodes addresses and a start block, so a contract redeploy
+orphans it — and the failure is silent: the subgraph stays healthy, indexes
+nothing that exists, and every consumer reads an empty world. That happened
+once. `bun run sync` makes the manifest follow the deployment file, and
+`deploy:studio` will not publish a stale one.
 
 ### Getting testnet funds
 
