@@ -77,12 +77,23 @@ export function identityRoutes(opts: IdentityOptions): Hono {
       const body = await c.req.json().catch(() => null);
       const proof = (body as { proof?: unknown } | null)?.proof;
       if (!isWorldProof(proof)) {
+        // Log the shape, never the values — a proof is not a secret but it is
+        // not ours to write down either.
+        console.warn(
+          `[identity] rejected a malformed proof from ${party}: keys=${
+            proof && typeof proof === "object" ? Object.keys(proof).join(",") : typeof proof
+          }`,
+        );
         return c.json({ error: "bad_proof", message: "expected a World verification payload" }, 400);
       }
-      // The signal binds the proof to this address at World's end too.
-      const signal = keccak256(encodePacked(["address"], [party as Address]));
-      const result = await verifyWithWorld(proof, opts.world, signal);
+      // The signal binds the proof to this address at World's end too. Passed
+      // raw; verifyWithWorld applies IDKit's hashToField, which is the hash
+      // actually bound into the proof.
+      const result = await verifyWithWorld(proof, opts.world, party);
       if (!result.ok) {
+        // Why a verification failed is the single most useful thing to know
+        // when one does, and it was being swallowed.
+        console.warn(`[identity] World rejected ${party}: ${result.code} — ${result.detail}`);
         const status = result.code === "world_unreachable" ? 503 : 400;
         return c.json({ error: result.code, message: result.detail }, status);
       }

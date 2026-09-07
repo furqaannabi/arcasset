@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { dbHealthy } from "./db";
 import { loadConfig } from "./config";
 import { loadDeployment } from "./chain/deployments";
@@ -47,6 +48,30 @@ if (config.agentKey && wallet) {
 }
 
 const app = new Hono();
+
+/**
+ * The web app is a different origin in every environment we run, so the browser
+ * needs this to talk to us at all.
+ *
+ * An allowlist rather than "*": documents and /identity/attest are gated on a
+ * bearer session token, and a wildcard origin beside credentials lets any site
+ * a signed-in user visits read their drafts or mint an attestation as them.
+ *
+ * The x402 headers are named explicitly. Custom request headers are blocked
+ * unless allowed, and custom response headers are invisible to JS unless
+ * exposed — so without PAYMENT-RESPONSE here the storefront could pay and then
+ * fail to read back the transaction hash it just paid with.
+ */
+app.use(
+  "*",
+  cors({
+    origin: config.corsOrigins,
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowHeaders: ["content-type", "authorization", "PAYMENT-SIGNATURE", "X-PAYMENT"],
+    exposeHeaders: ["PAYMENT-RESPONSE"],
+    maxAge: 86_400,
+  }),
+);
 
 app.get("/health", async (c) => {
   const [db, block, balance] = await Promise.all([
