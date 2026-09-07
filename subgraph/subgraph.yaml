@@ -10,9 +10,9 @@ dataSources:
     name: PartyRegistry
     network: arc-testnet
     source:
-      address: "0xEFa25395B840d6b241CF6fD71CC7089Be3ba805e"
+      address: "0x8707609D5d759210bc65c5A1dd55ca5323c5a5E2"
       abi: PartyRegistry
-      startBlock: 60708288
+      startBlock: 60884222
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -34,9 +34,9 @@ dataSources:
     name: IssuanceQueue
     network: arc-testnet
     source:
-      address: "0xf02774ee2dd08b85F69C113AaEEC62c3Df4745c0"
+      address: "0x33C3Da08E7e214c9F02Dae4C92D0CD55747f8181"
       abi: IssuanceQueue
-      startBlock: 60708288
+      startBlock: 60884222
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -65,9 +65,9 @@ dataSources:
     name: NoteFactory
     network: arc-testnet
     source:
-      address: "0x68D84290353516cC6b67b6b0D252BE32F1059E4d"
+      address: "0x8C054C0a11Eb9b03ecA160cECf5E68F60ad2E0Dd"
       abi: NoteFactory
-      startBlock: 60708288
+      startBlock: 60884222
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -90,9 +90,9 @@ dataSources:
     name: Offering
     network: arc-testnet
     source:
-      address: "0xf6190fF134BE3222bc90D618466a55c14397BB5b"
+      address: "0xF41B6a5354a8aB5B54Db0605F5bDbc2e15E5e5BB"
       abi: Offering
-      startBlock: 60708288
+      startBlock: 60884222
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -120,9 +120,9 @@ dataSources:
     name: RepaymentVault
     network: arc-testnet
     source:
-      address: "0x6e27DF0BDE231a2f1864Ee7C9D82508Fa1C260be"
+      address: "0xD8f1c0e1905E73ed68f47608c99b9b1903F17536"
       abi: RepaymentVault
-      startBlock: 60708288
+      startBlock: 60884222
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
@@ -146,9 +146,9 @@ dataSources:
     name: ServicingRelay
     network: arc-testnet
     source:
-      address: "0xc190e6F26cE14e40D30251fDe25927A73a5D58b6"
+      address: "0xa11f810c650A19F2E6a74828dB73EA29B8C6904D"
       abi: ServicingRelay
-      startBlock: 60708288
+      startBlock: 60884222
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
