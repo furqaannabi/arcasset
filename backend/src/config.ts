@@ -22,6 +22,7 @@ export type Config = {
   worldAppId: string | null;
   worldAction: string | null;
   dangerousAttestWithoutWorld: boolean;
+  corsOrigins: string[];
 };
 
 function num(name: string, fallback: number): number {
@@ -62,5 +63,12 @@ export function loadConfig(): Config {
     worldAction: process.env["WORLD_ACTION"] || null,
     // Opt in, explicitly, and never by an unset variable.
     dangerousAttestWithoutWorld: process.env["DANGEROUS_ATTEST_WITHOUT_WORLD"] === "true",
+    // An allowlist, never "*". Every authenticated route here takes a bearer
+    // session token, and a wildcard origin next to credentials is how another
+    // site reads a signed-in user's documents.
+    corsOrigins: (process.env["CORS_ORIGINS"] || "http://localhost:3000")
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean),
   };
 }
