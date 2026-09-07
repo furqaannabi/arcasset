@@ -47,6 +47,19 @@ export const partyRegistryAbi = [
     ],
     outputs: [],
   },
+
+  // Custom errors. Without them viem cannot decode a revert and every failure
+  // shows as a bare selector — which also silently defeats any code matching
+  // on the error name.
+  { type: "error", name: "ZeroAddress", inputs: [] },
+  { type: "error", name: "AlreadyVerified", inputs: [] },
+  { type: "error", name: "NullifierUsed", inputs: [] },
+  { type: "error", name: "InvalidNullifier", inputs: [] },
+  { type: "error", name: "NotVerified", inputs: [] },
+  { type: "error", name: "AlreadyRevoked", inputs: [] },
+  { type: "error", name: "AttestationExpired", inputs: [] },
+  { type: "error", name: "WrongAttestor", inputs: [] },
+  { type: "error", name: "ZeroNullifier", inputs: [] },
 ] as const;
 
 /**
@@ -84,6 +97,77 @@ export const issuanceQueueAbi = [
     outputs: [{ name: "proposalId", type: "uint256" }],
   },
   {
+    // The queue never re-emits terms, so the proposal page reads them here.
+    // See docs/03-subgraph.md on why they are not indexed.
+    type: "function",
+    name: "proposalOf",
+    stateMutability: "view",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { name: "originator", type: "address" },
+          termsTuple,
+          { name: "documentHash", type: "bytes32" },
+          { name: "documentURI", type: "string" },
+          { name: "status", type: "uint8" },
+          { name: "proposedAt", type: "uint64" },
+          { name: "acceptedAt", type: "uint64" },
+          { name: "approvedAt", type: "uint64" },
+        ],
+      },
+    ],
+  },
+  {
+    type: "function",
+    name: "isAdmin",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "MINT_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "accept",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "reject",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "proposalId", type: "uint256" },
+      { name: "reason", type: "string" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "mint",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "note", type: "address" },
+    ],
+  },
+  {
     type: "event",
     name: "Proposed",
     inputs: [
@@ -94,4 +178,22 @@ export const issuanceQueueAbi = [
       { name: "documentURI", type: "string", indexed: false },
     ],
   },
+
+  // Custom errors — see the note on partyRegistryAbi.
+  { type: "error", name: "ZeroAddress", inputs: [] },
+  { type: "error", name: "OriginatorNotVerified", inputs: [] },
+  { type: "error", name: "BorrowerNotVerified", inputs: [] },
+  { type: "error", name: "SelfDealing", inputs: [] },
+  { type: "error", name: "NoDocument", inputs: [] },
+  { type: "error", name: "BadDeadline", inputs: [] },
+  { type: "error", name: "BadTerms", inputs: [] },
+  { type: "error", name: "NotBorrower", inputs: [] },
+  { type: "error", name: "NotAdmin", inputs: [] },
+  { type: "error", name: "NotOriginator", inputs: [] },
+  { type: "error", name: "WrongStatus", inputs: [{ name: "have", type: "uint8" }, { name: "want", type: "uint8" }] },
+  { type: "error", name: "DigestChanged", inputs: [] },
+  { type: "error", name: "AcceptWindowClosed", inputs: [] },
+  { type: "error", name: "MintWindowClosed", inputs: [] },
+  { type: "error", name: "NotExpirable", inputs: [] },
+  { type: "error", name: "UnknownProposal", inputs: [] },
 ] as const;
