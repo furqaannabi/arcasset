@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
+import { useRowLink } from "@/lib/use-row-link";
 import { query } from "@/lib/subgraph";
 import { formatTimestamp, shortAddress } from "@/lib/format";
 import { Chip, Eyebrow, SectionHead } from "./ui";
@@ -100,6 +101,7 @@ export function ProposalList() {
 }
 
 function Table({ rows, me }: { rows: Row[]; me: string | undefined }) {
+  const rowLink = useRowLink();
   return (
     <div className="overflow-x-auto rounded-card border border-line">
       <table className="w-full">
@@ -110,11 +112,16 @@ function Table({ rows, me }: { rows: Row[]; me: string | undefined }) {
             <th className="eyebrow p-3">Originator</th>
             <th className="eyebrow p-3">Borrower</th>
             <th className="eyebrow p-3">Proposed</th>
+            <th className="eyebrow p-3">Note</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((p) => (
-            <tr key={p.id} className="border-b border-line last:border-0 hover:bg-panel">
+            <tr
+              key={p.id}
+              onClick={rowLink(`/proposal/${p.proposalId}`)}
+              className="cursor-pointer border-b border-line last:border-0 hover:bg-panel"
+            >
               <td className="p-3">
                 <Link
                   href={`/proposal/${p.proposalId}`}
@@ -134,6 +141,18 @@ function Table({ rows, me }: { rows: Row[]; me: string | undefined }) {
               </td>
               <td className="p-3 font-mono text-[12px] whitespace-nowrap text-muted">
                 {formatTimestamp(Number(p.proposedAt))}
+              </td>
+              <td className="p-3">
+                {p.note ? (
+                  <Link
+                    href={`/note/${p.note.id}`}
+                    className="font-mono text-[12px] text-accent underline-offset-2 hover:underline"
+                  >
+                    {shortAddress(p.note.id)}
+                  </Link>
+                ) : (
+                  <span className="font-mono text-[12px] text-faint">—</span>
+                )}
               </td>
             </tr>
           ))}

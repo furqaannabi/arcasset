@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { issuanceQueueAbi } from "@/lib/abis";
 import { ISSUANCE_QUEUE } from "@/lib/deployments";
 import { buildSchedule } from "@/lib/schedule";
+import { query } from "@/lib/subgraph";
 import {
   annualisedRate,
   formatBps,
@@ -59,6 +62,24 @@ export function ProposalView({ id }: { id: string }) {
     args: address ? [address] : undefined,
     query: { enabled: Boolean(address) },
   });
+
+  /**
+   * Where the note ended up. `proposalOf` does not carry it — only the Minted
+   * event does — so this is the one thing on the page the chain cannot answer
+   * and the index can. Matched on proposalId rather than on the entity id,
+   * whose byte encoding is not worth reconstructing client-side.
+   */
+  const minted = useQuery({
+    queryKey: ["proposal-note", id],
+    queryFn: () =>
+      query<{ proposals: { note: { id: string } | null }[] }>(
+        `query ProposalNote($pid: BigInt!) {
+          proposals(where: { proposalId: $pid }, first: 1) { note { id } }
+        }`,
+        { pid: id },
+      ),
+  });
+  const noteAddress = minted.data?.proposals[0]?.note?.id ?? null;
 
   if (proposalId === null) {
     return <ErrorState error={`"${id}" is not a proposal id.`} />;
@@ -180,6 +201,7 @@ export function ProposalView({ id }: { id: string }) {
           <SectionHead index="D" title="Your turn" />
           <Actions
             proposalId={proposalId}
+            noteAddress={noteAddress}
             status={status}
             isBorrower={isBorrower}
             isOriginator={isOriginator}
@@ -202,6 +224,7 @@ export function ProposalView({ id }: { id: string }) {
  */
 function Actions({
   proposalId,
+  noteAddress,
   status,
   isBorrower,
   isOriginator,
@@ -212,6 +235,7 @@ function Actions({
   onDone,
 }: {
   proposalId: bigint;
+  noteAddress: string | null;
   status: Status;
   isBorrower: boolean;
   isOriginator: boolean;
@@ -261,12 +285,20 @@ function Actions({
 
   if (status === "Rejected" || status === "Expired" || status === "Minted") {
     return (
-      <Panel>
+      <Panel className="space-y-3">
         <p className="text-[13px] text-muted">
           {status === "Minted"
             ? "This proposal has been minted. Nothing further is required here."
             : `This proposal is ${status.toLowerCase()} and cannot move further.`}
         </p>
+        {status === "Minted" && noteAddress ? (
+          <Link
+            href={`/note/${noteAddress}`}
+            className="inline-block font-mono text-[12px] text-accent underline-offset-2 hover:underline"
+          >
+            Open the note → {shortAddress(noteAddress)}
+          </Link>
+        ) : null}
       </Panel>
     );
   }

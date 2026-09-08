@@ -1,6 +1,7 @@
+import { isAddress } from "viem";
+import { NoteView } from "@/components/note-view";
 import { EmptyState } from "@/components/states";
 import { PageHeader, Chip } from "@/components/ui";
-import { StackBadge } from "@/components/stack";
 import { shortAddress } from "@/lib/format";
 
 export default async function NotePage({
@@ -18,13 +19,14 @@ export default async function NotePage({
         lede="Status, provenance, the offering, the period schedule, your position and the servicing log."
         meta={<Chip>note contract</Chip>}
       />
-      <div className="flex justify-end">
-        <StackBadge sponsor="graph" role="every figure on this page" muted />
-      </div>
-      <EmptyState
-        title="Not built yet"
-        hint="The period schedule table is the product — see docs/05-web.md. Due Sep 9."
-      />
+      {isAddress(address) ? (
+        <NoteView address={address} />
+      ) : (
+        <EmptyState
+          title="Not an address"
+          hint="A note is identified by the address of its own contract — 0x followed by 40 hex characters. The link that brought you here is malformed."
+        />
+      )}
     </div>
   );
 }

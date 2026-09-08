@@ -61,31 +61,40 @@ export function handleClaimed(event: Claimed): void {
 }
 
 /**
- * Authoritative balances. The mint's own Transfer (0x0 -> originator) is
- * never seen here — the note-factory.ts handler seeds it directly, since
- * this data source is not created until after NoteIssued (see there for why)
- * — so `from` below is always a real prior holder in practice.
+ * Authoritative balances.
+ *
+ * The mint's own Transfer (0x0 -> originator) is seeded by note-factory.ts and
+ * must not be counted again here. It was assumed unreachable — the template is
+ * created during NoteIssued, which is logged after the constructor's Transfer —
+ * but graph-node runs a new dynamic data source against the whole block that
+ * created it, earlier logs included. So the genesis Transfer does arrive, and
+ * counting it credited the originator twice: the first note read 190e18 against
+ * an on-chain balance of 90e18, exactly one principal too high.
+ *
+ * Skipping every `from == 0x0` Transfer is correct whichever way graph-node
+ * delivers it, which is why the guard is here rather than the seed being moved.
  */
 export function handleTransfer(event: Transfer): void {
   const note = Note.load(event.address);
   if (note == null) return;
 
-  if (!event.params.from.equals(ZERO_ADDRESS)) {
-    const fromId = note.id.concat(event.params.from);
-    let from = Position.load(fromId);
-    if (from == null) {
-      from = new Position(fromId);
-      from.note = note.id;
-      from.holder = event.params.from;
-      from.balance = ZERO_BI;
-      from.bought = ZERO_BI;
-      from.paid = ZERO_BI;
-      from.claimed = ZERO_BI;
-      from.firstHeldAt = event.block.timestamp;
-    }
-    from.balance = from.balance.minus(event.params.value);
-    from.save();
+  // Genesis mint — already seeded at NoteIssued, along with originatorRetained.
+  if (event.params.from.equals(ZERO_ADDRESS)) return;
+
+  const fromId = note.id.concat(event.params.from);
+  let from = Position.load(fromId);
+  if (from == null) {
+    from = new Position(fromId);
+    from.note = note.id;
+    from.holder = event.params.from;
+    from.balance = ZERO_BI;
+    from.bought = ZERO_BI;
+    from.paid = ZERO_BI;
+    from.claimed = ZERO_BI;
+    from.firstHeldAt = event.block.timestamp;
   }
+  from.balance = from.balance.minus(event.params.value);
+  from.save();
 
   const toId = note.id.concat(event.params.to);
   let to = Position.load(toId);

@@ -130,3 +130,19 @@ export function formatDuration(seconds: bigint | number): string {
   if (s % 60 === 0) return `${s / 60}m`;
   return `${s}s`;
 }
+
+/**
+ * Time of day with seconds, for the agent's decision log.
+ *
+ * The log is read while it moves — the question is "did that just happen",
+ * not "what date was it" — so the date is dropped and seconds are kept. Every
+ * other timestamp in the app stays absolute via formatTimestamp.
+ */
+export function formatClock(seconds: bigint | number): string {
+  return new Date(Number(seconds) * 1000).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}

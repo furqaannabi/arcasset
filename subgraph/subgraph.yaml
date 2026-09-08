@@ -81,6 +81,12 @@ dataSources:
       abis:
         - name: NoteFactory
           file: ./abis/NoteFactory.json
+        # handleNoteIssued binds the note it just heard about to read the three
+        # Terms fields NoteIssued does not carry. The RWANote template declares
+        # this ABI too, but a mapping may only bind ABIs listed on its own data
+        # source — without it here the handler aborts at the first mint.
+        - name: RWANote
+          file: ./abis/RWANote.json
       eventHandlers:
         - event: NoteIssued(indexed uint256,indexed address,indexed address,address,uint256,bytes32,uint256,uint16,uint16,uint64)
           handler: handleNoteIssued
