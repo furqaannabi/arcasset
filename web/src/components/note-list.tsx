@@ -45,6 +45,11 @@ const NOTES = `
       balance
       note { id }
     }
+    listings(where: { open: true }) {
+      id
+      amount
+      priceBps
+    }
   }
 `;
 
@@ -64,7 +69,20 @@ type Row = {
   borrower: { id: string };
 };
 
-type Data = { notes: Row[]; positions: { balance: string; note: { id: string } }[] };
+type Offer = { id: string; amount: string; priceBps: number };
+
+type Data = {
+  notes: Row[];
+  positions: { balance: string; note: { id: string } }[];
+  listings: Offer[];
+};
+
+const BPS = 10_000n;
+
+/** The contract's own expression, truncating — Offering.buy is exact-payment. */
+function costOf(amount: bigint, priceBps: number): bigint {
+  return (amount * BigInt(priceBps)) / BPS;
+}
 
 export function NoteList() {
   const { address } = useAccount();
@@ -92,6 +110,13 @@ export function NoteList() {
   }
 
   const held = new Set((data?.positions ?? []).map((p) => p.note.id.toLowerCase()));
+  // Listing.id is the note's own address, so the join is by id and no extra
+  // relation is needed on Note.
+  const offers = new Map(
+    (data?.listings ?? [])
+      .filter((l) => BigInt(l.amount) > 0n)
+      .map((l) => [l.id.toLowerCase(), l] as const),
+  );
   const yours = me
     ? all.filter(
         (n) =>
@@ -106,7 +131,7 @@ export function NoteList() {
       {yours.length > 0 ? (
         <section className="space-y-4">
           <SectionHead index="A" title="Yours" />
-          <Table rows={yours} me={me} held={held} />
+          <Table rows={yours} me={me} held={held} offers={offers} />
         </section>
       ) : null}
 
@@ -116,7 +141,7 @@ export function NoteList() {
           title="All notes"
           aside={<StackBadge sponsor="graph" role="indexed history" muted />}
         />
-        <Table rows={all} me={me} held={held} />
+        <Table rows={all} me={me} held={held} offers={offers} />
       </section>
     </div>
   );
@@ -126,10 +151,12 @@ function Table({
   rows,
   me,
   held,
+  offers,
 }: {
   rows: Row[];
   me: string | undefined;
   held: Set<string>;
+  offers: Map<string, Offer>;
 }) {
   return (
     <div className="overflow-x-auto rounded-card border border-line">
@@ -141,6 +168,7 @@ function Table({
             <th className="eyebrow p-3">Principal</th>
             <th className="eyebrow p-3">Coupon</th>
             <th className="eyebrow p-3">Periods</th>
+            <th className="eyebrow p-3">For sale</th>
             <th className="eyebrow p-3">You</th>
             <th className="eyebrow p-3">Minted</th>
           </tr>
@@ -174,6 +202,9 @@ function Table({
                 ) : null}
               </td>
               <td className="p-3">
+                <ForSale offer={offers.get(n.id.toLowerCase())} />
+              </td>
+              <td className="p-3">
                 <Roles note={n} me={me} held={held} />
               </td>
               <td className="p-3 font-mono text-[12px] whitespace-nowrap text-muted">
@@ -183,6 +214,25 @@ function Table({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * What a buyer came here for. The price is basis points of par, so the cost of
+ * taking the whole listing is spelled out rather than left as arithmetic — and
+ * it is the exact figure Offering.buy will demand, since that call refunds no
+ * change.
+ */
+function ForSale({ offer }: { offer: Offer | undefined }) {
+  if (!offer) return <span className="font-mono text-[11px] text-faint">—</span>;
+  const amount = BigInt(offer.amount);
+  return (
+    <div className="whitespace-nowrap">
+      <p className="font-mono text-[12px] text-accent tnum">{formatUsdc(amount)}</p>
+      <p className="font-mono text-[10.5px] text-muted tnum">
+        {(offer.priceBps / 100).toFixed(2)} of par · {formatUsdc(costOf(amount, offer.priceBps))}
+      </p>
     </div>
   );
 }
