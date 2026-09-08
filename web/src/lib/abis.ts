@@ -197,3 +197,111 @@ export const issuanceQueueAbi = [
   { type: "error", name: "NotExpirable", inputs: [] },
   { type: "error", name: "UnknownProposal", inputs: [] },
 ] as const;
+
+/**
+ * The note itself. `claimable`/`claim` are the holder's side of every
+ * repayment; `approve` exists only because listing pulls the tokens into
+ * escrow with `transferFrom`, so a sale is two transactions and the UI has to
+ * say so rather than let the second one revert.
+ */
+export const rwaNoteAbi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "holder", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "value", type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "claimable",
+    stateMutability: "view",
+    inputs: [{ name: "holder", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+] as const;
+
+/**
+ * The primary offering. `buy` is exact-payment — the contract reverts on a
+ * penny either way rather than refunding change — so the quote the UI shows
+ * and the value it sends must be the same integer expression the contract
+ * uses: (amount * priceBps) / 10000, truncating.
+ */
+export const offeringAbi = [
+  {
+    type: "function",
+    name: "list",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+      { name: "priceBps", type: "uint16" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "delist",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "buy",
+    stateMutability: "payable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+/**
+ * Repayment. Anyone may pay — a third party curing a borrower's miss is
+ * legitimate and is measured rather than prevented (docs/06-identity.md), so
+ * the UI does not gate this on being the borrower.
+ */
+export const repaymentVaultAbi = [
+  {
+    type: "function",
+    name: "repay",
+    stateMutability: "payable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "periodIndex", type: "uint16" },
+    ],
+    outputs: [],
+  },
+] as const;
