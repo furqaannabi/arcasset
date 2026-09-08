@@ -28,6 +28,16 @@ export const partyRegistryAbi = [
     outputs: [{ type: "bytes32" }],
   },
   {
+    // The reverse of nullifierOf. Lets the UI find out that a human is already
+    // verified as some other address before it offers a transaction that would
+    // revert NullifierUsed.
+    type: "function",
+    name: "partyOf",
+    stateMutability: "view",
+    inputs: [{ name: "nullifier", type: "bytes32" }],
+    outputs: [{ type: "address" }],
+  },
+  {
     type: "function",
     name: "revoked",
     stateMutability: "view",

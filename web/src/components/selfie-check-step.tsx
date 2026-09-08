@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { IDKitWidget, VerificationLevel, type ISuccessResult } from "@worldcoin/idkit";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import type { Address, Hex } from "viem";
+import { useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
+import { zeroAddress, type Address, type Hex } from "viem";
 import { addressUrl, txUrl } from "@/lib/chain";
 import { PARTY_REGISTRY } from "@/lib/deployments";
 import { partyRegistryAbi } from "@/lib/abis";
@@ -64,10 +64,27 @@ type Phase =
   | { at: "ready"; attestation: Attestation }
   | { at: "failed"; message: string; nullifierUsed?: boolean };
 
+/**
+ * Selectors, because a wallet that estimates gas itself may hand back the
+ * raw revert data with no ABI applied — matching only on the decoded name
+ * then silently misses the one failure this screen most needs to explain.
+ */
+const NULLIFIER_USED = "0x92814985";
+const ALREADY_VERIFIED = "0x118fd7b8";
+
+function isNullifierUsed(message: string): boolean {
+  return /NullifierUsed/i.test(message) || message.includes(NULLIFIER_USED);
+}
+
+function isAlreadyVerified(message: string): boolean {
+  return /AlreadyVerified/i.test(message) || message.includes(ALREADY_VERIFIED);
+}
+
 export function SelfieCheckStep({ party }: { party: Address | undefined }) {
   const { ensureSession, signingIn } = useSession();
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
 
+  const publicClient = usePublicClient();
   const { writeContract, data: hash, isPending, reset } = useWriteContract();
   const receipt = useWaitForTransactionReceipt({ hash });
 
@@ -90,9 +107,46 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
         token,
         body: JSON.stringify({ proof: result }),
       });
+
+      /**
+       * A World nullifier is derived from the app and action, not the wallet,
+       * so the same person scanning from a second address gets the same one —
+       * and PartyRegistry has already bound it to the first address, for good.
+       * Reading that binding here turns a wallet-level revert into a sentence,
+       * and stops us offering a button that cannot succeed.
+       *
+       * A failed read is not a failed verification: the chain is the authority
+       * and will refuse it anyway, so fall through and let it.
+       */
+      const bound = await boundTo(attestation.nullifier);
+      if (bound && bound !== attestation.party.toLowerCase()) {
+        setPhase({
+          at: "failed",
+          nullifierUsed: true,
+          message: `This human is already verified as ${shortAddress(bound as Address)}.`,
+        });
+        return;
+      }
+
       setPhase({ at: "ready", attestation });
     } catch (e) {
       setPhase({ at: "failed", message: describe(e) });
+    }
+  }
+
+  /** The address holding this nullifier, lowercased; null if free or unknown. */
+  async function boundTo(nullifier: Hex): Promise<string | null> {
+    if (!publicClient) return null;
+    try {
+      const holder = await publicClient.readContract({
+        address: PARTY_REGISTRY,
+        abi: partyRegistryAbi,
+        functionName: "partyOf",
+        args: [nullifier],
+      });
+      return holder === zeroAddress ? null : holder.toLowerCase();
+    } catch {
+      return null;
     }
   }
 
@@ -108,13 +162,17 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
       {
         onError: (e) => {
           // NullifierUsed is not a retryable failure and must not be dressed
-          // up as one — the nullifier is bound for good, by design.
-          const used = /NullifierUsed/i.test(e.message);
+          // up as one — the nullifier is bound for good, by design. It should
+          // have been caught before the button appeared; this is the backstop
+          // for the case where it was claimed in between.
+          const used = isNullifierUsed(e.message);
           setPhase({
             at: "failed",
             message: used
               ? "This human already has a verified address here."
-              : e.message,
+              : isAlreadyVerified(e.message)
+                ? "This address is already verified. Reload to see it."
+                : e.message,
             nullifierUsed: used,
           });
         },

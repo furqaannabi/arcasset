@@ -186,7 +186,11 @@ depends on. But it does mean:
 The nullifier is the whole mechanism. Rules:
 
 - Stored on-chain, mapped to the address that used it. A second address
-  presenting the same nullifier reverts with `NullifierUsed()`.
+  presenting the same nullifier reverts with `NullifierUsed()`. The web step
+  reads `partyOf(nullifier)` once the attestation is in hand and refuses there,
+  because the alternative is charging someone gas to learn a permanent fact —
+  and a wallet that estimates gas itself may report the revert as bare data,
+  so a UI matching only on the decoded error name would show them nothing.
 - **Not reassignable.** No "move my verification to a new wallet" path. Adding
   one would let a defaulting issuer migrate away from their history, which is
   precisely the attack this exists to stop. A lost wallet means a lost issuing
