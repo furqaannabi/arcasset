@@ -48,7 +48,11 @@ export function identityRoutes(opts: IdentityOptions): Hono {
       domainSeparator: { local: localDomain, onChain: onChainDomain, matches: localDomain === onChainDomain },
       world: opts.world ? { appId: opts.world.appId, action: opts.world.action } : null,
       ...(opts.dangerousWithoutWorld
-        ? { WARNING: "DANGEROUS_ATTEST_WITHOUT_WORLD is on — anyone can be verified, there is no personhood check" }
+        ? {
+            WARNING:
+              "DANGEROUS_ATTEST_WITHOUT_WORLD is on — anyone can be verified, there is no personhood check" +
+              (opts.world ? ", and it is overriding the configured World app" : ""),
+          }
         : {}),
     });
   });
@@ -73,7 +77,12 @@ export function identityRoutes(opts: IdentityOptions): Hono {
 
     let nullifier: Hex;
 
-    if (opts.world) {
+    // The bypass wins when it is set, even if World is configured. It is named
+    // to be unmissable and it is reported by /health and /identity/status; a
+    // flag that silently does nothing whenever World happens to be configured
+    // is worse than one that works, because the operator believes they turned
+    // something on and did not.
+    if (opts.world && !opts.dangerousWithoutWorld) {
       const body = await c.req.json().catch(() => null);
       const proof = (body as { proof?: unknown } | null)?.proof;
       if (!isWorldProof(proof)) {

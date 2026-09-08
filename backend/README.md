@@ -106,10 +106,20 @@ pays for it. The attestation authorises verification; it does not perform it.
 deployed contract. A mismatch rejects every attestation on-chain **and rejects it
 identically to a forgery**, so it is worth reporting rather than discovering.
 
+`identity-testnet.sh` runs everything the browser does except the World
+handshake, against the deployed contracts with the real attestor — which is the
+part that cannot be checked from a laptop without a phone. It starts its own
+backend on a throwaway port with the bypass on, so the running dev server keeps
+its gate. Each run uses a fresh wallet, spends a little testnet gas, and writes
+public state.
+
 `DANGEROUS_ATTEST_WITHOUT_WORLD=true` issues attestations with no personhood
 check at all, for development without World credentials. It is named to be
 impossible to enable by accident, every response carries a `WARNING`, and both
-`/health` and `/identity/status` say so — demoing with it on would mean demoing
+`/health` and `/identity/status` say so — including when it is overriding a
+configured World app, which it does deliberately: a flag that silently does
+nothing whenever World happens to be configured is worse than one that works,
+because the operator believes they turned something on and did not — demoing with it on would mean demoing
 no gate at all.
 
 ### A note on R2 and public buckets
@@ -308,7 +318,8 @@ bun run typecheck
 
 ./script/agent-e2e.sh           # the agent services a note unattended
 ./script/x402-e2e.sh            # a cold wallet pays and is served
-./script/identity-e2e.sh        # a wallet gets verified on-chain
+./script/identity-e2e.sh        # a wallet gets verified on-chain (local Anvil)
+./script/identity-testnet.sh    # the same, against the LIVE deployment
 ./script/originator-e2e.sh      # an originator covering their own borrower's miss
 bun run script/documents-e2e.ts # upload, seal, and who can read
 ```
