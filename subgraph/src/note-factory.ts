@@ -97,12 +97,10 @@ export function handleNoteIssued(event: NoteIssued): void {
     originator.save();
   }
 
-  // The constructor's own Transfer(0x0, originator, principal) fires inside
-  // this same transaction but strictly before NoteIssued, and the RWANote
-  // template is not instantiated until the `create` call below — a dynamic
-  // data source only sees events from its creation point forward, so that
-  // mint Transfer would otherwise be silently missed. Seed the position here
-  // instead of relying on the template to catch its own genesis event.
+  // The constructor's own Transfer(0x0, originator, principal) fires in this
+  // same transaction, before NoteIssued. Seed the genesis position here rather
+  // than depend on when the template starts seeing events; rwa-note.ts skips
+  // every `from == 0x0` Transfer so this is counted exactly once.
   const position = new Position(noteAddress.concat(event.params.originator));
   position.note = note.id;
   position.holder = event.params.originator;
