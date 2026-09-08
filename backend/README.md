@@ -106,6 +106,16 @@ pays for it. The attestation authorises verification; it does not perform it.
 deployed contract. A mismatch rejects every attestation on-chain **and rejects it
 identically to a forgery**, so it is worth reporting rather than discovering.
 
+`seed-testnet.sh` writes a real note to the live deployment: two freshly
+generated parties verified, propose through mint, 10% listed at 97 and bought,
+period 0 paid and settled, period 1 missed and marked delinquent, then cured by
+the **originator** — which is the row the intel product exists to sell. Periods
+are the 60-second contract minimum because a public chain has no time warp, so
+the run takes about four minutes of real waiting.
+
+It spends testnet gas, writes public state, and permanently verifies the wallets
+it generates. Run it deliberately.
+
 `identity-testnet.sh` runs everything the browser does except the World
 handshake, against the deployed contracts with the real attestor — which is the
 part that cannot be checked from a laptop without a phone. It starts its own
@@ -320,6 +330,7 @@ bun run typecheck
 ./script/x402-e2e.sh            # a cold wallet pays and is served
 ./script/identity-e2e.sh        # a wallet gets verified on-chain (local Anvil)
 ./script/identity-testnet.sh    # the same, against the LIVE deployment
+./script/seed-testnet.sh        # puts one real note on testnet, with a miss and a cure
 ./script/originator-e2e.sh      # an originator covering their own borrower's miss
 bun run script/documents-e2e.ts # upload, seal, and who can read
 ```
