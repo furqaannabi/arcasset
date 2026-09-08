@@ -16,22 +16,31 @@ wallet.
 |---|---|
 | `contracts/` | 7 deployed and **verified** on Arc testnet, with a real personhood verifier. 126 tests, plus a 37-assertion run against a live node |
 | `backend/` | Agent, verification, documents, and three x402 endpoints. 66 tests and five end-to-end suites |
-| `subgraph/` | 13 entities, 22 handlers, published to Studio. **Needs a redeploy** — see below |
-| `web/` | Next.js 16, five routes. 28 tests |
+| `subgraph/` | 13 entities, 22 handlers. Published at **v0.0.5**, synced to head, no indexing errors |
+| `web/` | Next.js 16, seven routes. `/intel` is still a stub; everything else is live. 28 tests |
 | Specs | [docs/](docs/), eight documents. Read the relevant one before changing an interface |
 
-**The subgraph on Studio is indexing the previous contract set.** The verifier
-swap redeployed all seven, and the published manifest still points at the old
-addresses — which fails silently, because Studio reports healthy and simply
-returns an empty world. The manifest in this repo is fixed and derives its
-addresses from `contracts/deployments/<chainId>.json`, but it takes a
-`bun run deploy:studio` to matter.
+**The subgraph is live and correct.** It points at the current contract set,
+indexes to chain head, and is what `/proposals`, `/note/[address]` and the
+agent console read. Two failures got it there and both are worth knowing about,
+because neither announced itself:
 
-Until that lands, **the agent and the paid API read contracts directly over
-RPC** rather than through the subgraph. That works and is tested; it is also
-the wrong shape at any real scale, and it is why the scorecards report
-`latencyAvailable: false` — lateness lives in event timestamps that only the
-indexer aggregates.
+- The published manifest pointed at the pre-verifier-swap addresses. Studio
+  reported healthy and returned an empty world. Addresses now derive from
+  `contracts/deployments/<chainId>.json` and `bun run deploy:studio` refuses to
+  publish if the two disagree.
+- `handleNoteIssued` binds the note contract to read three `Terms` fields the
+  event does not carry, and the `RWANote` ABI was declared only on the
+  template. A mapping may bind only ABIs listed on its own data source, so the
+  handler aborted at the first mint and the subgraph stopped dead — with every
+  verification and proposal before it indexed perfectly, which is what made it
+  look like a data problem rather than a crash.
+
+**The agent and the paid API still read contracts directly over RPC**, not
+through the subgraph. That works and is tested; it is also the wrong shape at
+any real scale, and it is why the scorecards report `latencyAvailable: false` —
+lateness lives in event timestamps that only the indexer aggregates. Moving
+them onto the index is the next correctness win, not a rescue.
 
 **The deployed personhood verifier trusts an attestor.** It is a real signature
 check rather than the mock that accepted anything, and the sybil property holds
