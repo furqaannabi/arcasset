@@ -6,6 +6,7 @@ import { CHAIN } from "@/lib/chain";
 const LINKS = [
   { href: "/propose", label: "Propose" },
   { href: "/proposals", label: "Proposals" },
+  { href: "/notes", label: "Notes" },
   { href: "/agent", label: "Agent" },
   { href: "/intel", label: "Intel" },
 ] as const;
