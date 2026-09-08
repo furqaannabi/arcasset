@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
+import { useRowLink } from "@/lib/use-row-link";
 import { zeroAddress } from "viem";
 import { query } from "@/lib/subgraph";
 import { formatBps, formatDuration, formatTimestamp, formatUsdc, shortAddress } from "@/lib/format";
@@ -158,6 +159,7 @@ function Table({
   held: Set<string>;
   offers: Map<string, Offer>;
 }) {
+  const rowLink = useRowLink();
   return (
     <div className="overflow-x-auto rounded-card border border-line">
       <table className="w-full">
@@ -175,7 +177,11 @@ function Table({
         </thead>
         <tbody>
           {rows.map((n) => (
-            <tr key={n.id} className="border-b border-line last:border-0 hover:bg-panel">
+            <tr
+              key={n.id}
+              onClick={rowLink(`/note/${n.id}`)}
+              className="cursor-pointer border-b border-line last:border-0 hover:bg-panel"
+            >
               <td className="p-3">
                 <Link
                   href={`/note/${n.id}`}

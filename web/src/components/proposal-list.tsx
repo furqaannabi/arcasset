@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
+import { useRowLink } from "@/lib/use-row-link";
 import { query } from "@/lib/subgraph";
 import { formatTimestamp, shortAddress } from "@/lib/format";
 import { Chip, Eyebrow, SectionHead } from "./ui";
@@ -100,6 +101,7 @@ export function ProposalList() {
 }
 
 function Table({ rows, me }: { rows: Row[]; me: string | undefined }) {
+  const rowLink = useRowLink();
   return (
     <div className="overflow-x-auto rounded-card border border-line">
       <table className="w-full">
@@ -115,7 +117,11 @@ function Table({ rows, me }: { rows: Row[]; me: string | undefined }) {
         </thead>
         <tbody>
           {rows.map((p) => (
-            <tr key={p.id} className="border-b border-line last:border-0 hover:bg-panel">
+            <tr
+              key={p.id}
+              onClick={rowLink(`/proposal/${p.proposalId}`)}
+              className="cursor-pointer border-b border-line last:border-0 hover:bg-panel"
+            >
               <td className="p-3">
                 <Link
                   href={`/proposal/${p.proposalId}`}

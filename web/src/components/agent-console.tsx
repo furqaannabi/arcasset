@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useRowLink } from "@/lib/use-row-link";
 import { query, MAX_LAG_BLOCKS } from "@/lib/subgraph";
 import { addressUrl, txUrl } from "@/lib/chain";
 import {
@@ -384,6 +385,7 @@ function DecisionLog({ lines }: { lines: LogLine[] }) {
 }
 
 function ServiceTable({ notes }: { notes: ServicedNote[] }) {
+  const rowLink = useRowLink();
   return (
     <div className="overflow-x-auto rounded-card border border-line">
       <table className="w-full">
@@ -400,7 +402,11 @@ function ServiceTable({ notes }: { notes: ServicedNote[] }) {
           {notes.map((n) => {
             const next = n.periods[0];
             return (
-              <tr key={n.id} className="border-b border-line last:border-0 hover:bg-panel">
+              <tr
+                key={n.id}
+                onClick={rowLink(`/note/${n.id}`)}
+                className="cursor-pointer border-b border-line last:border-0 hover:bg-panel"
+              >
                 <td className="p-3">
                   <Link
                     href={`/note/${n.id}`}
