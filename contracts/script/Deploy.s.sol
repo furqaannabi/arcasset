@@ -8,6 +8,7 @@ import {NoteFactory} from "../src/NoteFactory.sol";
 import {RepaymentVault} from "../src/RepaymentVault.sol";
 import {ServicingRelay} from "../src/ServicingRelay.sol";
 import {Offering} from "../src/Offering.sol";
+import {RepaymentMandate} from "../src/RepaymentMandate.sol";
 import {IPartyRegistry} from "../src/interfaces/IPartyRegistry.sol";
 import {INoteFactory} from "../src/interfaces/INoteFactory.sol";
 import {INoteRegistry} from "../src/interfaces/INoteRegistry.sol";
@@ -24,6 +25,23 @@ import {AttestedVerifier} from "../src/verifiers/AttestedVerifier.sol";
 /// prediction held rather than trusting it, because a silent mismatch would
 /// deploy a factory no queue can ever call.
 contract Deploy is Script {
+    /// @dev Storage, and named. Eight addresses passed positionally is one
+    /// transposition away from a deployment record that points at the wrong
+    /// contracts and still looks plausible; keeping them here also spares the
+    /// stack, which eight live locals had already exhausted.
+    struct Deployed {
+        address registry;
+        address factory;
+        address queue;
+        address vault;
+        address relay;
+        address offering;
+        address verifier;
+        address mandate;
+    }
+
+    Deployed private d;
+
     function run() external {
         // A keystore passed via --account/--keystore is picked up by forge
         // itself; DEPLOYER_PRIVATE_KEY is the fallback for local Anvil runs.
@@ -62,14 +80,14 @@ contract Deploy is Script {
 
         address predictedQueue = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 1);
         NoteFactory factory = new NoteFactory(predictedQueue, owner);
-        IssuanceQueue queue = new IssuanceQueue(
-            IPartyRegistry(address(registry)), INoteFactory(address(factory)), owner, admin
-        );
+        IssuanceQueue queue =
+            new IssuanceQueue(IPartyRegistry(address(registry)), INoteFactory(address(factory)), owner, admin);
         require(address(queue) == predictedQueue, "queue address prediction failed");
 
         RepaymentVault vault = new RepaymentVault(INoteRegistry(address(factory)), owner);
         ServicingRelay relay = new ServicingRelay(INoteRegistry(address(factory)), vault);
         Offering offering = new Offering(INoteRegistry(address(factory)));
+        RepaymentMandate mandate = new RepaymentMandate(factory, vault);
 
         factory.setInfrastructure(address(vault), address(relay));
         vault.setRelay(address(relay));
@@ -83,43 +101,36 @@ contract Deploy is Script {
         console.log("RepaymentVault ", address(vault));
         console.log("ServicingRelay ", address(relay));
         console.log("Offering       ", address(offering));
+        console.log("RepaymentMandate", address(mandate));
         console.log("Verifier       ", verifierAddr);
         console.log("Attestor       ", attestor);
 
-        _write(
-            address(registry),
-            address(factory),
-            address(queue),
-            address(vault),
-            address(relay),
-            address(offering),
-            verifierAddr
-        );
+        d.registry = address(registry);
+        d.factory = address(factory);
+        d.queue = address(queue);
+        d.vault = address(vault);
+        d.relay = address(relay);
+        d.offering = address(offering);
+        d.verifier = verifierAddr;
+        d.mandate = address(mandate);
+        _write();
     }
 
     /// @dev One JSON per network, read by backend and web. Nothing hardcodes an
     /// address anywhere else.
-    function _write(
-        address registry,
-        address factory,
-        address queue,
-        address vault,
-        address relay,
-        address offering,
-        address verifier
-    ) private {
+    function _write() private {
         string memory o = "deployment";
         vm.serializeUint(o, "chainId", block.chainid);
-        vm.serializeAddress(o, "PartyRegistry", registry);
-        vm.serializeAddress(o, "NoteFactory", factory);
-        vm.serializeAddress(o, "IssuanceQueue", queue);
-        vm.serializeAddress(o, "RepaymentVault", vault);
-        vm.serializeAddress(o, "ServicingRelay", relay);
-        vm.serializeAddress(o, "Offering", offering);
-        string memory json = vm.serializeAddress(o, "PersonhoodVerifier", verifier);
+        vm.serializeAddress(o, "PartyRegistry", d.registry);
+        vm.serializeAddress(o, "NoteFactory", d.factory);
+        vm.serializeAddress(o, "IssuanceQueue", d.queue);
+        vm.serializeAddress(o, "RepaymentVault", d.vault);
+        vm.serializeAddress(o, "ServicingRelay", d.relay);
+        vm.serializeAddress(o, "Offering", d.offering);
+        vm.serializeAddress(o, "RepaymentMandate", d.mandate);
+        string memory json = vm.serializeAddress(o, "PersonhoodVerifier", d.verifier);
 
-        string memory path =
-            string.concat(vm.projectRoot(), "/deployments/", vm.toString(block.chainid), ".json");
+        string memory path = string.concat(vm.projectRoot(), "/deployments/", vm.toString(block.chainid), ".json");
 
         // Refuse to clobber an existing record. A fork keeps the forked chain's
         // id, so a local test run against a fork of Arc writes to the same file
