@@ -25,6 +25,7 @@ import { EmptyState, ErrorState, Skeleton } from "./states";
 import { StackBadge } from "./stack";
 import { NoteOffering } from "./note-offering";
 import { DelegatePanel, RepayPanel } from "./note-servicing";
+import { NoteMandates } from "./note-mandates";
 
 /**
  * The note detail screen — docs/05-web.md ("The main screen").
@@ -199,6 +200,12 @@ export function NoteView({ address }: { address: string }) {
           connected={connected}
           onDone={refetch}
         />
+        {/*
+          Directly below paying by hand, because they are the same obligation
+          answered two ways: pay it now, or authorise it once and let the agent
+          take it when it falls due.
+        */}
+        <NoteMandates note={note} isBorrower={isBorrower} />
       </section>
 
       <section className="space-y-4">
