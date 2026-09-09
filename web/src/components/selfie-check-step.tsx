@@ -8,7 +8,7 @@ import { addressUrl, txUrl } from "@/lib/chain";
 import { PARTY_REGISTRY } from "@/lib/deployments";
 import { partyRegistryAbi } from "@/lib/abis";
 import { shortAddress } from "@/lib/format";
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { useSession } from "@/lib/use-session";
 import { Button, Eyebrow, Panel } from "./ui";
 import { StackBadge } from "./stack";
@@ -81,7 +81,7 @@ function isAlreadyVerified(message: string): boolean {
 }
 
 export function SelfieCheckStep({ party }: { party: Address | undefined }) {
-  const { ensureSession, signingIn } = useSession();
+  const { authed, signingIn } = useSession();
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
 
   const publicClient = usePublicClient();
@@ -97,14 +97,8 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
     if (!party) return;
     setPhase({ at: "attesting" });
     try {
-      const token = await ensureSession();
-      if (!token) {
-        setPhase({ at: "failed", message: "Sign in with this wallet to continue." });
-        return;
-      }
-      const attestation = await api<Attestation>("/identity/attest", {
+      const attestation = await authed<Attestation>("/identity/attest", {
         method: "POST",
-        token,
         body: JSON.stringify({ proof: result }),
       });
 
