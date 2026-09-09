@@ -1,6 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { decide, NoteStatus, PeriodStatus } from "./decide";
-import type { NoteView, PeriodView } from "./decide";
+import type { MandateView, NoteView, PeriodView } from "./decide";
 
 const HOUR = 3600;
 const DAY = 86_400;
@@ -22,6 +22,62 @@ const period = (over: Partial<PeriodView> = {}): PeriodView => ({
   paid: 0n,
   status: PeriodStatus.Pending,
   ...over,
+});
+
+const mandate = (over: Partial<MandateView> = {}): MandateView => ({
+  validAfter: NOW - DAY,
+  validBefore: NOW + DAY,
+  value: 1_000n,
+  ...over,
+});
+
+describe("collecting a signed mandate", () => {
+  test("collects when the period is short and the mandate is live", () => {
+    const d = decide(note(), period({ paid: 0n }), NOW, mandate());
+    expect(d.action).toBe("COLLECT");
+  });
+
+  test("collects rather than marking delinquent once grace has ended", () => {
+    // The whole point. A mandate the borrower signed must be tried before
+    // their record is marked, or the agent manufactures the delinquency.
+    const p = period({ end: NOW - 5 * DAY, paid: 0n });
+    expect(decide(note(), p, NOW).action).toBe("DELINQUENT");
+    expect(decide(note(), p, NOW, mandate()).action).toBe("COLLECT");
+  });
+
+  test("settles rather than collecting when the money is already there", () => {
+    const d = decide(note(), period({ paid: 1_000n }), NOW, mandate());
+    expect(d.action).toBe("SETTLE");
+  });
+
+  test("ignores a mandate that is not yet valid", () => {
+    const d = decide(note(), period({ end: NOW + HOUR }), NOW, mandate({ validAfter: NOW + HOUR }));
+    expect(d.action).toBe("WAIT");
+  });
+
+  test("ignores an expired mandate", () => {
+    const p = period({ end: NOW - 5 * DAY, paid: 0n });
+    const d = decide(note(), p, NOW, mandate({ validBefore: NOW - HOUR }));
+    expect(d.action).toBe("DELINQUENT");
+  });
+
+  test("does not collect against a settled period", () => {
+    const d = decide(note(), period({ status: PeriodStatus.Settled }), NOW, mandate());
+    expect(d.action).toBe("WAIT");
+  });
+
+  test("does not collect on a terminal note", () => {
+    const d = decide(note({ status: NoteStatus.Defaulted }), period(), NOW, mandate());
+    expect(d.action).toBe("WAIT");
+  });
+
+  test("a closed cure window outranks a live mandate", () => {
+    // Past the cure window the note's fate is already decided; pulling more
+    // money from the borrower does not change it and should not be done.
+    const n = note({ firstMissedAt: NOW - 31 * DAY, cureWindow: 30 * DAY });
+    const d = decide(n, period({ paid: 0n }), NOW, mandate());
+    expect(d.action).toBe("DEFAULT");
+  });
 });
 
 describe("settling", () => {

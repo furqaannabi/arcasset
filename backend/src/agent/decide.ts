@@ -25,7 +25,7 @@ export const NoteStatus = {
 } as const;
 export type NoteStatus = (typeof NoteStatus)[keyof typeof NoteStatus];
 
-export type Action = "SETTLE" | "WAIT" | "DELINQUENT" | "DEFAULT";
+export type Action = "SETTLE" | "COLLECT" | "WAIT" | "DELINQUENT" | "DEFAULT";
 
 export type PeriodView = {
   index: number;
@@ -34,6 +34,21 @@ export type PeriodView = {
   due: bigint;
   paid: bigint;
   status: PeriodStatus;
+};
+
+/**
+ * A repayment the borrower has already signed for, still unspent.
+ *
+ * The agent never holds it as permission — the signature is the permission,
+ * and it is single-use and bound to this note and period by its nonce. What
+ * the agent contributes is the gas and the timing.
+ */
+export type MandateView = {
+  /** Half-open window the borrower signed, in Unix seconds. */
+  validAfter: number;
+  validBefore: number;
+  /** Token base units the mandate moves — 6 decimals, the ERC-20 face. */
+  value: bigint;
 };
 
 export type NoteView = {
@@ -60,7 +75,12 @@ export type Decision = {
  * meaningful about them, and default is checked before delinquency because a
  * note past its cure window should not accumulate more misses on the way out.
  */
-export function decide(note: NoteView, period: PeriodView, now: number): Decision {
+export function decide(
+  note: NoteView,
+  period: PeriodView,
+  now: number,
+  mandate: MandateView | null = null,
+): Decision {
   if (note.status === NoteStatus.Matured || note.status === NoteStatus.Defaulted) {
     return { action: "WAIT", reason: "note is terminal" };
   }
@@ -92,6 +112,18 @@ export function decide(note: NoteView, period: PeriodView, now: number): Decisio
       return { action: "WAIT", reason: `funded, period ends at ${period.end}` };
     }
     return { action: "SETTLE", reason: `paid ${period.paid} >= due ${period.due}` };
+  }
+
+  // Underfunded, and the borrower has already signed for the difference.
+  // Collecting outranks both waiting out the grace period and marking the
+  // period late: a mandate that expires unused is a repayment the borrower
+  // authorised and nobody carried out, and the delinquency it turns into is
+  // one the record should never have shown.
+  if (mandate && now > mandate.validAfter && now < mandate.validBefore) {
+    return {
+      action: "COLLECT",
+      reason: `mandate for ${mandate.value} valid until ${mandate.validBefore}`,
+    };
   }
 
   // Short, but still inside grace. A borrower who has paid most of it with two
