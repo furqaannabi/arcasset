@@ -1,34 +1,37 @@
-# 09 — Automatic repayment: what is missing
+# 09 — Automatic repayment
 
-**Status: Draft — a handoff in the other direction, from Apurva's lane to
-Furqaan's. Like [08](08-handoff.md) it describes what is *not* built, and goes
-stale as the work lands.**
+**Status: Spec — built Sep 9, end to end, across both lanes. This began as a
+handoff describing what was missing; it now describes what is there, and keeps
+the two faults it was written to warn about because both were real and both
+are the kind that come back.**
 
-`RepaymentMandate` is deployed and tested. The agent knows how to decide
-`COLLECT`. Nothing connects the two, and nothing lets a borrower sign a mandate
-in the first place — so the automatic path does not exist end to end, and the
-frontend for it cannot be built yet.
+A borrower signs an EIP-3009 authorization per period. It waits in Postgres.
+When a period comes up short the agent presents it, `RepaymentMandate` pulls
+the token and pays the vault natively in the same call, and `Collected` marks
+the resulting `Repayment` as pulled rather than pushed.
 
-This is what it needs, in the order it has to happen.
+Nobody holds permission to take anything. The signature is the permission, it
+is bound to one note, one period, one amount and one window by a nonce nobody
+chooses, and the token itself refuses the second attempt.
 
-## Two live faults, before anything is added
+## Two faults this doc was written to warn about — both fixed
 
-Both are in `backend/src/agent/`, both are one line, and the second one is the
-reason this doc leads with them rather than with the design.
+Both were in `backend/src/agent/`, both one line, and the second is why this
+doc still leads with them.
 
-### `decide()` is never handed a mandate
+### `decide()` was never handed a mandate
 
 ```ts
 // loop.ts:105
 const d = decide(entry.note, period, now);   // fourth argument omitted
 ```
 
-`mandate` defaults to `null`, so the `COLLECT` branch is unreachable in the
-running agent. `decide.test.ts` passes because it calls `decide()` directly.
-The feature is currently dead code with a green test suite, which is the shape
-of thing that gets marked done.
+`mandate` defaulted to `null`, so the `COLLECT` branch was unreachable in the
+running agent while `decide.test.ts` passed by calling `decide()` directly.
+Dead code with a green suite is the shape of thing that gets marked done.
+`loop.ts` now reads `entry.mandates.get(period.index)` and passes it.
 
-### `act()` will default a borrower who signed to pay
+### `act()` would have defaulted a borrower who signed to pay
 
 ```ts
 // loop.ts — the dispatch is a ternary with a fallthrough
@@ -37,14 +40,14 @@ d.action === "SETTLE"       ? await executor.settlePeriod(noteId, index)
 : await executor.markDefaulted(noteId)     // ← COLLECT lands here
 ```
 
-Fix the first fault without touching this one and the agent starts marking
-notes **defaulted** in exactly the case where the borrower had already
-authorised the money. It is the one irreversible act in the system, and
-`defaultDryRun` does not catch it — that guard keys on `d.action === "DEFAULT"`,
-which a `COLLECT` is not.
+Fixing the first fault without this one would have made the agent mark notes
+**defaulted** in exactly the case where the borrower had already authorised the
+money. It is the one irreversible act in the system, and `defaultDryRun` would
+not have caught it — that guard keys on `d.action === "DEFAULT"`, which a
+`COLLECT` is not.
 
-Add the `COLLECT` branch in the same commit as the `decide()` argument, or
-neither.
+It is now an exhaustive `switch` with a throwing `default`. A new action must
+never again fall through to the one irreversible call.
 
 ## 1. Storage
 
@@ -124,30 +127,33 @@ struct Authorization {
 Split v/r/s, not a 65-byte blob. `intel/settle.ts` already does exactly this
 split for x402, including the `v < 27` normalisation some signers need.
 
-## 5. The frontend, which is mine
+## 5. The frontend — and where it could not go
 
-Once 1 and 2 exist. It is the same EIP-712 signing already shipped on `/intel`,
-and the domain is confirmed correct against the token itself:
+**The handoff put this at accept time. It cannot be there.** `mandateNonce`
+derives from `(contract, chainId, noteId, periodIndex)`, and a note has no
+`noteId` until `mint` assigns one — so at acceptance there is nothing to sign
+against, and `POST /mandates` could not resolve the note either. The panel sits
+on `/note/[address]` instead, directly under paying by hand: the same
+obligation answered two ways.
+
+It is the same EIP-712 signing shipped on `/intel`, and the domain is confirmed
+against the token itself:
 
 ```
 USDC.DOMAIN_SEPARATOR()                     0x361191522483d32a83e70ae7183b4b9629442c13a78bc9921d6f707911c8c6b0
 hashDomain(USDC, 2, 5042002, 0x3600…0000)   0x361191522483d32a83e70ae7183b4b9629442c13a78bc9921d6f707911c8c6b0
 ```
 
-**One open question, and it changes where the screen lives.** A mandate covers
-one period, so a twelve-period note is twelve wallet prompts. Three options:
+A mandate covers one period, so a twelve-period note is twelve prompts. The
+borrower picks how many, defaulting to every outstanding period, and the field
+says what signing fewer costs: the automatic path stops when they run out, and
+the first anyone notices is a period marked late.
 
-1. **All of them, at accept time.** The borrower is already signing and already
-   looking at the schedule. Twelve prompts in a row is a lot to ask on camera.
-2. **The next N.** Fewer prompts, but the automatic path silently stops working
-   when they run out, which is the failure mode this whole feature exists to
-   prevent.
-3. **On demand, from the note page.** Least pressure, least coverage — a
-   borrower who never returns has authorised nothing.
-
-Decide before I build it. My preference is (1) with a count the borrower
-chooses, defaulting to all of them, because a partial mandate is a promise the
-agent cannot keep and nobody will notice until a period is marked late.
+The window each signature covers opens at the period's end and closes when the
+cure window would. Not now — a mandate valid immediately would be collected the
+moment the note exists, which is not what "pay this period when it falls due"
+means. And not at the grace deadline — a mandate that expires while the note is
+still curable is a repayment the borrower authorised and nobody carried out.
 
 ## Two things that are already right
 
@@ -158,13 +164,13 @@ agent cannot keep and nobody will notice until a period is marked late.
   itself refuses the second attempt. That is why `collect` is permissionless: a
   relayer contributes gas and timing, never permission.
 
-## What is already done on this feature
+## What has never run against real money
 
-- `RepaymentMandate` deployed at `0x81b0334115f5641dDE86D7696C52020558Ab84a5`
-- `decide()` returns `COLLECT`, with tests
-- The subgraph indexes `Collected` — `Repayment.collected` distinguishes a
-  pulled repayment from a pushed one, which is the fact the intel product
-  sells. See [03](03-subgraph.md); no mandate has been collected yet, so the
-  field has never been set by real data.
-- Manual repayment ships and is the demo path: `RepaymentVault.repay` from the
-  note page, borrower pushes native value one period at a time.
+Every piece is built and typechecked, both suites pass, and the routes answer.
+But **no mandate has been signed by a wallet and no mandate has been
+collected** — so the signature path, the pull, and `Repayment.collected` have
+never been exercised end to end. That is the first thing to do on the next note
+minted with short periods.
+
+Manual repayment remains the demo path and is unaffected: `RepaymentVault.repay`
+from the note page, borrower pushes native value one period at a time.

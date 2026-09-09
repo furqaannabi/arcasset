@@ -7,10 +7,10 @@ against fixed interfaces.
 If an implementation disagrees with a spec, one of the two is wrong — fix it in
 the same commit, don't leave them diverged.
 
-08 and 09 are the exception to all of that: they are handoff notes, not specs.
-They describe what is *not* built rather than what to build to, and they go
-stale by design as the work lands. 08 runs from Furqaan's lane to Apurva's; 09
-runs the other way.
+08 is the exception to all of that: it is a handoff note, not a spec. It
+describes what is *not* built rather than what to build to, and it goes stale
+by design as the work lands. 09 began the same way, running the other
+direction, and has since been built — it is a spec again.
 
 | # | Doc | Covers |
 |---|-----|--------|
@@ -23,7 +23,7 @@ runs the other way.
 | 06 | [Identity](06-identity.md) | World Selfie Check, eligibility, abuse model |
 | 07 | [Milestones](07-milestones.md) | Day-by-day plan, demo script, cut lines |
 | 08 | [Handoff](08-handoff.md) | Open work in Apurva's lane — subgraph, frontend, what today's redeploy moved |
-| 09 | [Automatic repayment](09-mandate.md) | Open work in Furqaan's lane — what the mandate needs before the signing UI can exist |
+| 09 | [Automatic repayment](09-mandate.md) | Signed mandates: storage, lodging, collection, and the signing UI |
 
 ## Status legend
 
