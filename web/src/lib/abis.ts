@@ -296,6 +296,29 @@ export const offeringAbi = [
     ],
     outputs: [],
   },
+  {
+    // Reprice in place. Without it the only way to change a price is to delist
+    // and list again, which returns the tokens to the originator and back to
+    // escrow for nothing.
+    type: "function",
+    name: "relist",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "priceBps", type: "uint16" },
+    ],
+    outputs: [],
+  },
+  {
+    // Escrowed tokens keep earning while they sit unsold, and the Offering is
+    // the holder of record. Permissionless, because the destination is the
+    // note's own originator — there is nothing for a caller to redirect.
+    type: "function",
+    name: "sweepEscrow",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "noteId", type: "uint256" }],
+    outputs: [{ type: "uint256" }],
+  },
 ] as const;
 
 /**
