@@ -296,6 +296,29 @@ export const offeringAbi = [
     ],
     outputs: [],
   },
+  {
+    // Reprice in place. Without it the only way to change a price is to delist
+    // and list again, which returns the tokens to the originator and back to
+    // escrow for nothing.
+    type: "function",
+    name: "relist",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "priceBps", type: "uint16" },
+    ],
+    outputs: [],
+  },
+  {
+    // Escrowed tokens keep earning while they sit unsold, and the Offering is
+    // the holder of record. Permissionless, because the destination is the
+    // note's own originator — there is nothing for a caller to redirect.
+    type: "function",
+    name: "sweepEscrow",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "noteId", type: "uint256" }],
+    outputs: [{ type: "uint256" }],
+  },
 ] as const;
 
 /**
@@ -313,5 +336,39 @@ export const repaymentVaultAbi = [
       { name: "periodIndex", type: "uint16" },
     ],
     outputs: [],
+  },
+] as const;
+
+/**
+ * Servicing delegation. The originator chooses who services the note — they
+ * arranged the loan and they are selling exposure to it — and every entry
+ * point on the relay is gated on this: settlePeriod, markDelinquent and
+ * markDefaulted all revert NotDelegated for anyone else. A note nobody
+ * delegated is never touched by the agent.
+ */
+export const servicingRelayAbi = [
+  {
+    type: "function",
+    name: "delegate",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "agent", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "revokeDelegation",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "noteId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "agentOf",
+    stateMutability: "view",
+    inputs: [{ name: "noteId", type: "uint256" }],
+    outputs: [{ type: "address" }],
   },
 ] as const;

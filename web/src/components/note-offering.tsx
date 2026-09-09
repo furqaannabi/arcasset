@@ -79,12 +79,81 @@ export function NoteOffering({
         </p>
       )}
 
+      <EscrowSweep note={note} onDone={onDone} />
+
       {isOriginator ? (
         <OriginatorControls note={note} forSale={forSale} connected={connected} onDone={onDone} />
       ) : open ? (
         <BuyControls note={note} forSale={forSale} priceBps={priceBps} connected={connected} onDone={onDone} />
       ) : null}
     </Panel>
+  );
+}
+
+/**
+ * Coupons keep accruing on listed-but-unsold tokens, and while they sit in
+ * escrow this contract is the holder of record — so the money accrues to an
+ * address with no way to claim it. Stranded, and stranded quietly: nothing
+ * else on this page would ever mention it.
+ *
+ * Shown to everyone and callable by anyone, which is how the contract is
+ * written: the destination is the note's own originator, so there is nothing
+ * for a caller to redirect and no reason to make the originator be present.
+ */
+function EscrowSweep({ note, onDone }: { note: NoteDetail; onDone: () => void }) {
+  const stranded = useReadContract({
+    address: note.id as Address,
+    abi: rwaNoteAbi,
+    functionName: "claimable",
+    args: [OFFERING],
+    query: { refetchInterval: 20_000 },
+  });
+
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const receipt = useWaitForTransactionReceipt({ hash });
+
+  useEffect(() => {
+    if (receipt.isSuccess) {
+      void stranded.refetch();
+      onDone();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [receipt.isSuccess]);
+
+  const amount = stranded.data ?? 0n;
+  if (amount === 0n) return null;
+
+  const busy = isPending || receipt.isLoading;
+
+  return (
+    <div className="space-y-3 rounded-card border border-warn/40 bg-warn-faint px-3.5 py-3">
+      <Eyebrow className="text-warn">Coupons stranded in escrow</Eyebrow>
+      <p className="text-[12px] leading-relaxed text-ink/80">
+        {formatUsdc(amount)} USDC has accrued on inventory sitting unsold in the
+        offering. It belongs to the originator, but the offering contract is the
+        holder of record and cannot spend it — sweeping forwards it on. Anyone
+        may do this; the destination is fixed.
+      </p>
+      <Button
+        tone="secondary"
+        disabled={busy}
+        onClick={() =>
+          writeContract({
+            address: OFFERING,
+            abi: offeringAbi,
+            functionName: "sweepEscrow",
+            args: [BigInt(note.noteId)],
+          })
+        }
+      >
+        {busy ? (isPending ? "Confirm in wallet…" : "Sweeping…") : `Sweep ${formatUsdc(amount)}`}
+      </Button>
+      {error ? (
+        <p className="font-mono text-[11px] leading-relaxed break-words text-danger" role="alert">
+          {/NothingToSweep/.test(error.message) ? "Already swept." : error.message}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -184,6 +253,25 @@ function OriginatorControls({
     });
   }
 
+  /**
+   * Repricing in place. Delisting and listing again would move the tokens out
+   * of escrow and back for no reason, and would reset the listing's history.
+   */
+  function submitRelist() {
+    setProblem(null);
+    if (forSale === 0n) return setProblem("Nothing is listed to reprice.");
+    if (!Number.isInteger(bps) || bps <= 0 || bps > 20_000) {
+      return setProblem("Price must be between 1 and 20000 basis points of par.");
+    }
+    reset();
+    writeContract({
+      address: OFFERING,
+      abi: offeringAbi,
+      functionName: "relist",
+      args: [BigInt(note.noteId), bps],
+    });
+  }
+
   function submitDelist() {
     setProblem(null);
     if (forSale === 0n) return setProblem("Nothing is escrowed to pull back.");
@@ -243,6 +331,9 @@ function OriginatorControls({
             : needsApproval
               ? "Approve escrow (1 of 2)"
               : "List"}
+        </Button>
+        <Button tone="secondary" disabled={busy || forSale === 0n} onClick={submitRelist}>
+          Reprice to {Number.isInteger(bps) && bps > 0 ? (bps / 100).toFixed(2) : "…"}
         </Button>
         <Button tone="secondary" disabled={busy || forSale === 0n} onClick={submitDelist}>
           Delist {forSale > 0n ? formatUsdc(forSale) : ""}

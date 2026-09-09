@@ -208,7 +208,13 @@ type Position @entity(immutable: false) {
   firstHeldAt: BigInt!
 }
 
-type Repayment @entity(immutable: true) {
+"""
+Mutable, unwillingly. RepaymentMandate.Collected is emitted *after* the
+vault.repay it causes — collect() pays first and announces second — so the flag
+below can only be set on a row that already exists. Everything else here is
+still written once and never touched again.
+"""
+type Repayment @entity(immutable: false) {
   id: Bytes! # tx hash ++ log index
   note: Note!
   period: Period!
@@ -217,8 +223,33 @@ type Repayment @entity(immutable: true) {
   onTime: Boolean!
   byThirdParty: Boolean! # payer != borrower
   byOriginator: Boolean! # payer == the note's originator
+
+  """
+  Pulled by RepaymentMandate against a signature the borrower gave in advance,
+  rather than pushed by hand. The intel product sells *who actually paid*, and
+  a payment that arrived because an agent presented a standing mandate is a
+  different fact about a borrower from one they remembered to make.
+
+  The collected amount is not stored a second time: `amount` above already
+  carries it in native 18-decimal units, while Collected reports the 6-decimal
+  token face. The two differ by 1e12 and keeping both invites the wrong one
+  being read.
+  """
+  collected: Boolean!
+
   timestamp: BigInt!
   txHash: Bytes!
+}
+
+"""
+A repayment addressed by what caused it, so a log later in the same transaction
+can find it. Same role as NoteIndex: an event carries the noteId and the period
+but not the Repayment's id, which is a tx hash and a log index nobody
+downstream knows.
+"""
+type RepaymentIndex @entity(immutable: false) {
+  id: Bytes! # tx hash ++ note address ++ period index
+  repayment: Repayment!
 }
 
 enum ActionKind {

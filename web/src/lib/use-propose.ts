@@ -3,7 +3,6 @@
 import { useCallback, useState } from "react";
 import { useAccount, useWriteContract, usePublicClient } from "wagmi";
 import type { Address, Hex } from "viem";
-import { api } from "./api";
 import { useSession } from "./use-session";
 import { issuanceQueueAbi } from "./abis";
 import { ISSUANCE_QUEUE } from "./deployments";
@@ -45,7 +44,7 @@ export type ProposeResult = {
 
 export function usePropose() {
   const { address } = useAccount();
-  const { ensureSession } = useSession();
+  const { ensureSession, authed } = useSession();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
 
@@ -65,9 +64,8 @@ export function usePropose() {
         if (!token) throw new Error("Sign in with this wallet to upload the agreement.");
 
         setStep("creating-draft");
-        const draft = await api<{ id: string }>("/documents/drafts", {
+        const draft = await authed<{ id: string }>("/documents/drafts", {
           method: "POST",
-          token,
           body: JSON.stringify({
             borrower: terms.borrower,
             // Stored beside the files so a reviewer sees what was proposed,
@@ -84,17 +82,16 @@ export function usePropose() {
         for (const file of files) {
           const form = new FormData();
           form.append("file", file);
-          await api(`/documents/drafts/${draft.id}/files`, {
+          await authed(`/documents/drafts/${draft.id}/files`, {
             method: "POST",
-            token,
             body: form,
           });
         }
 
         setStep("sealing");
-        const sealed = await api<{ manifestHash: Hex; manifestKey: string }>(
+        const sealed = await authed<{ manifestHash: Hex; manifestKey: string }>(
           `/documents/drafts/${draft.id}/seal`,
-          { method: "POST", token },
+          { method: "POST" },
         );
 
         setStep("awaiting-wallet");
@@ -141,7 +138,7 @@ export function usePropose() {
         setStep("idle");
       }
     },
-    [address, ensureSession, writeContractAsync, publicClient],
+    [address, ensureSession, authed, writeContractAsync, publicClient],
   );
 
   return { propose, step, error, result };

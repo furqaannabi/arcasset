@@ -187,17 +187,29 @@ type Position @entity {
   firstHeldAt: BigInt!
 }
 
-type Repayment @entity(immutable: true) {
+# Mutable, unwillingly: RepaymentMandate.Collected fires *after* the
+# vault.repay it causes, so `collected` can only be set on a row that already
+# exists. Every other field is still written once.
+type Repayment @entity(immutable: false) {
   id: Bytes!                      # tx hash ++ log index
   note: Note!
   period: Period!
   payer: Bytes!
-  amount: BigInt!
+  amount: BigInt!                 # 18-decimal native
   onTime: Boolean!
   byThirdParty: Boolean!          # payer != borrower
   byOriginator: Boolean!          # payer == the note's originator
+  collected: Boolean!             # pulled against a signed mandate, not pushed
   timestamp: BigInt!
   txHash: Bytes!
+}
+
+# A repayment addressed by what caused it, so a log later in the same
+# transaction can find it. Same role as NoteIndex: Collected carries the noteId
+# and the period but not the Repayment's id, which is a log index.
+type RepaymentIndex @entity(immutable: false) {
+  id: Bytes!                      # tx hash ++ note address ++ period index
+  repayment: Repayment!
 }
 
 type ServicingAction @entity(immutable: true) {
@@ -278,7 +290,8 @@ an `eth_call` on every event.
 | | `Repriced` | update `Listing.priceBps` |
 | | `Delisted` | set `Listing.amount` to `remaining`, bump `delistedTotal` |
 | | `Bought` | shrink `Listing.amount`, bump `Note.soldAmount`, create `Sale`, upsert buyer `Position.bought`/`paid`, bump `Originator.principalSold` |
-| RepaymentVault | `Repaid` | create `Repayment` (reputation record: who paid, on time or not), bump `Note.totalRepaid`/`Borrower.principalRepaid`; bump `Originator.periodsCuredBySelf` only when the payer is the originator *and* the period was already `Missed` |
+| RepaymentVault | `Repaid` | create `Repayment` (reputation record: who paid, on time or not) and its `RepaymentIndex`, bump `Note.totalRepaid`/`Borrower.principalRepaid`; bump `Originator.periodsCuredBySelf` only when the payer is the originator *and* the period was already `Missed` |
+| RepaymentMandate | `Collected` | set `Repayment.collected` on the row the `RepaymentIndex` points at. The event's `value` is the 6-decimal token face of money `Repayment.amount` already holds in 18-decimal native — a factor of `1e12` — so it is deliberately not stored twice |
 | RWANote (per-note template) | `StatusChanged` | **the only writer of `Note.status`** — also sets `closedAt` and bumps `notesMatured`/`notesDefaulted` on both parties when terminal |
 | | `PaymentRecorded` | set `Period.paid` to the event's cumulative value — the vault's `Repaid` can cascade one payment across several periods, each getting its own `PaymentRecorded` |
 | | `Transfer` | authoritative `Position.balance` for both sides; recomputes `Note.originatorRetained` when either side is the originator |
