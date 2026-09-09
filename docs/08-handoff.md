@@ -148,4 +148,4 @@ Nothing to build against yet — I will say when there is.
   contracts. **The 11 R2 objects those documents pointed at are now orphaned**
   and the bucket is still publicly readable.
 
-Full write-up is in [README.md](README.md#automatic-repayment).
+Full write-up is in [README.md](../README.md#automatic-repayment).

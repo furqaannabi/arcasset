@@ -19,7 +19,7 @@ plumbing between them is not.
 | `backend/` | Agent, verification, documents, and three x402 endpoints. 74 tests and five end-to-end suites |
 | `subgraph/` | 13 entities, 22 handlers. Published at **v0.0.5**, indexing to head — but against the contracts replaced on Sep 9 |
 | `web/` | Next.js 16, seven routes. `/intel` is still a stub; everything else is live. 28 tests |
-| Specs | [docs/](docs/), eight documents. Read the relevant one before changing an interface |
+| Specs | [docs/](docs/), eight specs plus [08 — Handoff](docs/08-handoff.md), which lists what is open in Apurva's lane |
 
 **The subgraph indexes cleanly and points at the wrong contracts.** The Sep 9
 redeploy moved every address, and the published `v0.0.5` still indexes the

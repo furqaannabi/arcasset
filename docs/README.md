@@ -7,6 +7,10 @@ against fixed interfaces.
 If an implementation disagrees with a spec, one of the two is wrong — fix it in
 the same commit, don't leave them diverged.
 
+08 is the exception to all of that: it is a handoff note, not a spec. It
+describes what is *not* built rather than what to build to, and it goes stale
+by design as the work lands.
+
 | # | Doc | Covers |
 |---|-----|--------|
 | 00 | [Overview](00-overview.md) | Problem, actors, the loop, scope and non-goals |
@@ -17,6 +21,7 @@ the same commit, don't leave them diverged.
 | 05 | [Web](05-web.md) | Screens, states, empty and error cases |
 | 06 | [Identity](06-identity.md) | World Selfie Check, eligibility, abuse model |
 | 07 | [Milestones](07-milestones.md) | Day-by-day plan, demo script, cut lines |
+| 08 | [Handoff](08-handoff.md) | Open work in Apurva's lane — subgraph, frontend, what today's redeploy moved |
 
 ## Status legend
 
