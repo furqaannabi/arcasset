@@ -86,3 +86,35 @@ model SpentAuthorization {
 
   @@index([payer])
 }
+
+/// A repayment the borrower has signed for in advance, waiting to be pulled.
+///
+/// Pre-chain and unspendable by us: the signature is the authority, this table
+/// is only where it waits. It belongs here for the same reason a draft does —
+/// nothing on chain records that a mandate exists until the moment it is
+/// collected, and after that the chain is the authority on whether it was.
+///
+/// The key is the pair, not a cuid, because RepaymentMandate.mandateNonce
+/// derives the nonce from (contract, chainId, noteId, periodIndex). One mandate
+/// per period exists by construction: a second signature covers the same nonce
+/// and the token will only ever honour one of them. A schema that allowed two
+/// rows would be describing something the chain cannot do.
+model Mandate {
+  noteId      String
+  periodIndex Int
+  borrower    String
+  /// 6-decimal base units — the ERC-20 face, which is what EIP-3009 signs.
+  /// Native is 18 and the two differ by 1e12; this is never the native figure.
+  value       String
+  validAfter  String
+  validBefore String
+  /// Recomputed from the contract on lodging, never taken from the client.
+  nonce       String   @unique
+  signature   String
+  /// Set once the agent has spent it, so a used nonce is not retried forever.
+  collectedTx String?
+  createdAt   DateTime @default(now())
+
+  @@id([noteId, periodIndex])
+  @@index([borrower])
+}
