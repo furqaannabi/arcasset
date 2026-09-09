@@ -1,7 +1,7 @@
 import type { Address, Hash } from "viem";
 import { decide } from "./decide";
 import type { Action, Decision } from "./decide";
-import type { NoteSource, ServiceableNote } from "./source";
+import type { NoteSource, ServiceableNote, StoredMandate } from "./source";
 
 /**
  * The tick. Reads, decides, acts, records — and stops itself when any of the
@@ -16,6 +16,9 @@ export interface Executor {
   settlePeriod(noteId: bigint, index: number): Promise<Hash>;
   markDelinquent(noteId: bigint, index: number): Promise<Hash>;
   markDefaulted(noteId: bigint): Promise<Hash>;
+  /** Present a mandate the borrower signed. Optional: an agent without a
+   * RepaymentMandate address simply never decides COLLECT. */
+  collect?(noteId: bigint, index: number, mandate: StoredMandate): Promise<Hash>;
   gasBalance(): Promise<bigint>;
 }
 
@@ -102,7 +105,8 @@ export async function tick(
         return report;
       }
 
-      const d = decide(entry.note, period, now);
+      const mandate = entry.mandates.get(period.index) ?? null;
+      const d = decide(entry.note, period, now, mandate);
       const line: LogLine = {
         noteId: entry.note.noteId.toString(),
         period: period.index,
@@ -134,7 +138,7 @@ export async function tick(
         }
       }
 
-      await act(entry, period.index, d, executor, report, line);
+      await act(entry, period.index, d, executor, report, line, source);
     }
   }
 
@@ -148,18 +152,47 @@ async function act(
   executor: Executor,
   report: TickReport,
   line: LogLine,
+  source?: NoteSource,
 ): Promise<void> {
   const noteId = entry.note.noteId;
   try {
     // Sends are awaited one at a time, deliberately. A single signer with
     // parallel sends is a nonce collision waiting to happen, and the throughput
     // we would gain is throughput we do not need.
-    const tx =
-      d.action === "SETTLE"
-        ? await executor.settlePeriod(noteId, index)
-        : d.action === "DELINQUENT"
-          ? await executor.markDelinquent(noteId, index)
-          : await executor.markDefaulted(noteId);
+    //
+    // Exhaustive on purpose. This was a ternary whose last branch was
+    // markDefaulted, so a COLLECT — the case where the borrower had already
+    // authorised the money — would have defaulted them instead, and
+    // defaultDryRun would not have caught it because that guard keys on the
+    // DEFAULT action. A new action must never fall through to the one
+    // irreversible call.
+    let tx: Hash;
+    switch (d.action) {
+      case "SETTLE":
+        tx = await executor.settlePeriod(noteId, index);
+        break;
+      case "DELINQUENT":
+        tx = await executor.markDelinquent(noteId, index);
+        break;
+      case "DEFAULT":
+        tx = await executor.markDefaulted(noteId);
+        break;
+      case "COLLECT": {
+        const mandate = entry.mandates.get(index);
+        if (!mandate) throw new Error("decided COLLECT with no mandate to present");
+        // Optional on the interface, because an agent with no RepaymentMandate
+        // address should never have decided this in the first place. If it did,
+        // that is a wiring fault and it says so rather than defaulting anyone.
+        if (!executor.collect) throw new Error("this executor cannot collect mandates");
+        tx = await executor.collect(noteId, index, mandate);
+        // Burned now, by the token's own rule. Recording it stops the agent
+        // presenting the same dead nonce on every tick from here on.
+        await source?.markCollected?.(noteId, index, tx);
+        break;
+      }
+      default:
+        throw new Error(`no executor path for ${d.action as string}`);
+    }
 
     report.actionsTaken++;
     report.log.push({ ...line, tx });

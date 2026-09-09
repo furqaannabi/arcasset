@@ -7,10 +7,12 @@ import { publicClientFor, walletClientFor } from "./chain/client";
 import { ChainExecutor, privateKeyFrom } from "./agent/executor";
 import { privateKeyToAccount } from "viem/accounts";
 import { RpcNoteSource } from "./agent/source";
+import { PrismaMandateStore } from "./agent/mandate-store";
 import { AgentRunner } from "./agent/runner";
 import { intelRoutes } from "./intel/routes";
 import { documentRoutes } from "./documents/routes";
 import { identityRoutes } from "./identity/routes";
+import { mandateRoutes } from "./mandates/routes";
 import { storageFromEnv, R2Storage } from "./documents/storage";
 
 const config = loadConfig();
@@ -25,12 +27,21 @@ const wallet = config.agentKey
   : null;
 
 if (config.agentKey && wallet) {
-  const executor = new ChainExecutor(publicClient, wallet, deployment.ServicingRelay);
+  const executor = new ChainExecutor(
+    publicClient,
+    wallet,
+    deployment.ServicingRelay,
+    deployment.RepaymentMandate,
+  );
+  // Mandates make the agent's reads touch Postgres for the first time. Behind
+  // the source interface, so the decision loop still does not know where its
+  // view of the world comes from.
   const source = new RpcNoteSource(
     publicClient,
     deployment.NoteFactory,
     deployment.ServicingRelay,
     deployment.RepaymentVault,
+    new PrismaMandateStore(),
   );
   runner = new AgentRunner(
     source,
@@ -147,6 +158,17 @@ app.route(
   ),
 );
 app.route("/documents", documentRoutes(storage, admins));
+
+app.route(
+  "/mandates",
+  mandateRoutes({
+    publicClient,
+    factory: deployment.NoteFactory,
+    mandate: deployment.RepaymentMandate,
+    usdc: config.usdcErc20,
+    chainId: config.chainId,
+  }),
+);
 
 const attestorAddress = config.attestorKey ? privateKeyToAccount(config.attestorKey).address : null;
 app.route(

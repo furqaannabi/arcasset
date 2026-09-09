@@ -1,4 +1,4 @@
-import type { Address, PublicClient } from "viem";
+import type { Address, Hex, PublicClient } from "viem";
 import { noteAbi, noteFactoryAbi, relayAbi, vaultAbi } from "@/chain/abis";
 import { NoteStatus, PeriodStatus } from "./decide";
 import type { NoteView, PeriodView } from "./decide";
@@ -15,6 +15,12 @@ import type { NoteView, PeriodView } from "./decide";
 export interface NoteSource {
   /** Notes this agent is delegated to service, with their unsettled periods. */
   serviceable(agent: Address): Promise<ServiceableNote[]>;
+  /**
+   * Record that a mandate has been spent, so a burned nonce is not presented
+   * again every tick. The chain is still the authority on whether the money
+   * moved; this only stops the agent asking a second time.
+   */
+  markCollected?(noteId: bigint, periodIndex: number, txHash: string): Promise<void>;
   /** How far behind the source is, in blocks. Zero for a direct RPC read. */
   lagBlocks(): Promise<number>;
   /**
@@ -33,7 +39,30 @@ export type ServiceableNote = {
   note: NoteView;
   address: Address;
   periods: PeriodView[];
+  /** Unspent mandates for this note, by period index. Empty when none. */
+  mandates: Map<number, StoredMandate>;
 };
+
+/**
+ * A mandate as the agent needs it: what `decide` reasons about, plus the
+ * signature it cannot act without. The agent never holds this as permission —
+ * the signature is the permission, and it is bound to one note, one period and
+ * one amount by a nonce nobody here chose.
+ */
+export type StoredMandate = {
+  /** 6-decimal token base units. Native is 18; RepaymentMandate scales. */
+  value: bigint;
+  validAfter: number;
+  validBefore: number;
+  signature: Hex;
+};
+
+/** Where unspent mandates come from. Postgres today; the interface is so the
+ * decision loop does not have to know that. */
+export interface MandateStore {
+  unspentFor(noteId: bigint): Promise<Map<number, StoredMandate>>;
+  markCollected(noteId: bigint, periodIndex: number, txHash: string): Promise<void>;
+}
 
 export class RpcNoteSource implements NoteSource {
   constructor(
@@ -41,7 +70,13 @@ export class RpcNoteSource implements NoteSource {
     private readonly factory: Address,
     private readonly relay: Address,
     private readonly vault: Address,
+    /** Absent means no automatic repayment; every note reads as unmandated. */
+    private readonly mandates: MandateStore | null = null,
   ) {}
+
+  async markCollected(noteId: bigint, periodIndex: number, txHash: string): Promise<void> {
+    await this.mandates?.markCollected(noteId, periodIndex, txHash);
+  }
 
   /** Direct reads are always at head, by definition. */
   async lagBlocks(): Promise<number> {
@@ -121,6 +156,10 @@ export class RpcNoteSource implements NoteSource {
       });
     }
 
-    return { note, address, periods };
+    // Read once per note, not once per period: a note with twelve periods and
+    // no mandates should cost one query, not twelve.
+    const mandates = this.mandates ? await this.mandates.unspentFor(id) : new Map<number, StoredMandate>();
+
+    return { note, address, periods, mandates };
   }
 }

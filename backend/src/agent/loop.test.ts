@@ -3,7 +3,7 @@ import { tick } from "./loop";
 import type { AgentConfig, Executor } from "./loop";
 import { NoteStatus, PeriodStatus } from "./decide";
 import type { NoteView, PeriodView } from "./decide";
-import type { NoteSource, ServiceableNote } from "./source";
+import type { NoteSource, ServiceableNote, StoredMandate } from "./source";
 import type { Address, Hash } from "viem";
 
 const AGENT = "0x00000000000000000000000000000000000000a1" as Address;
@@ -87,10 +87,15 @@ const period = (over: Partial<PeriodView> = {}): PeriodView => ({
   status: PeriodStatus.Pending,
   ...over,
 });
-const entry = (n: NoteView, ps: PeriodView[]): ServiceableNote => ({
+const entry = (
+  n: NoteView,
+  ps: PeriodView[],
+  mandates: Map<number, StoredMandate> = new Map(),
+): ServiceableNote => ({
   note: n,
   address: "0x00000000000000000000000000000000000000ff" as Address,
   periods: ps,
+  mandates,
 });
 
 describe("acting", () => {
