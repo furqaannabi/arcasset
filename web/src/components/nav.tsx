@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ConnectButton } from "./connect-button";
 import { ThemeToggle } from "./theme-toggle";
@@ -15,8 +16,21 @@ export function Nav() {
   return (
     <header className="border-b border-line bg-canvas">
       <nav className="mx-auto flex max-w-6xl items-center gap-8 px-6 py-3.5">
-        <Link href="/" className="font-mono text-sm tracking-tight text-ink">
-          ArcAsset
+        <Link href="/" className="flex items-center gap-2.5 text-ink">
+          {/*
+           * The mark carries its own dark tile, so it reads on both themes
+           * without a second file — the wordmark alone is near-white and
+           * would disappear on the light canvas.
+           */}
+          <Image
+            src="/mark.png"
+            alt=""
+            width={22}
+            height={22}
+            className="rounded-[5px]"
+            priority
+          />
+          <span className="font-mono text-sm tracking-tight">ArcAsset</span>
         </Link>
 
         <div className="flex gap-5">

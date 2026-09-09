@@ -7,10 +7,24 @@ import { Nav } from "@/components/nav";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+const DESCRIPTION =
+  "Autonomous agents that service tokenized private credit on Arc for verified-human issuers, and sell what they learn.";
+
 export const metadata: Metadata = {
   title: "ArcAsset",
-  description:
-    "Autonomous agents that service tokenized private credit on Arc for verified-human issuers, and sell what they learn.",
+  description: DESCRIPTION,
+  /*
+   * favicon.ico, icon.png and apple-icon.png sit beside this file, so Next
+   * emits the icon tags from the filenames alone — they are not listed here.
+   * The share card is the app icon rather than the full lockup: the lockup is
+   * transparent with a dark halo behind the wordmark, which turns to grime on
+   * the white background most link previews composite onto.
+   */
+  openGraph: {
+    title: "ArcAsset",
+    description: DESCRIPTION,
+    images: [{ url: "/mark.png", width: 256, height: 256, alt: "ArcAsset" }],
+  },
 };
 
 /**
