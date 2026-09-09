@@ -315,3 +315,37 @@ export const repaymentVaultAbi = [
     outputs: [],
   },
 ] as const;
+
+/**
+ * Servicing delegation. The originator chooses who services the note — they
+ * arranged the loan and they are selling exposure to it — and every entry
+ * point on the relay is gated on this: settlePeriod, markDelinquent and
+ * markDefaulted all revert NotDelegated for anyone else. A note nobody
+ * delegated is never touched by the agent.
+ */
+export const servicingRelayAbi = [
+  {
+    type: "function",
+    name: "delegate",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "agent", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "revokeDelegation",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "noteId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "agentOf",
+    stateMutability: "view",
+    inputs: [{ name: "noteId", type: "uint256" }],
+    outputs: [{ type: "address" }],
+  },
+] as const;

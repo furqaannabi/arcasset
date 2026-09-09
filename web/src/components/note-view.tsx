@@ -24,6 +24,7 @@ import { Button, Chip, Eyebrow, Panel, SectionHead, Stat } from "./ui";
 import { EmptyState, ErrorState, Skeleton } from "./states";
 import { StackBadge } from "./stack";
 import { NoteOffering } from "./note-offering";
+import { DelegatePanel, RepayPanel } from "./note-servicing";
 
 /**
  * The note detail screen — docs/05-web.md ("The main screen").
@@ -158,6 +159,7 @@ export function NoteView({ address }: { address: string }) {
   }
 
   const isOriginator = me !== undefined && note.originator.id.toLowerCase() === me;
+  const isBorrower = me !== undefined && note.borrower.id.toLowerCase() === me;
   const mine = me === undefined ? undefined : data?.positions.find((p) => p.holder.toLowerCase() === me);
 
   return (
@@ -190,12 +192,28 @@ export function NoteView({ address }: { address: string }) {
       </section>
 
       <section className="space-y-4">
-        <SectionHead index="D" title="Your position" />
-        <PositionPanel note={note} position={mine} connected={connected} onDone={refetch} />
+        <SectionHead index="D" title="Repayment" />
+        <RepayPanel
+          note={note}
+          isBorrower={isBorrower}
+          connected={connected}
+          onDone={refetch}
+        />
       </section>
 
       <section className="space-y-4">
-        <SectionHead index="E" title="Servicing log" />
+        <SectionHead index="E" title="Your position" />
+        <PositionPanel note={note} position={mine} connected={connected} onDone={refetch} />
+      </section>
+
+      {/*
+        Delegation sits above the log rather than in its own section: it is the
+        reason the log below it is empty or not, and reading them apart is how
+        someone concludes the agent is broken when it was simply never asked.
+      */}
+      <section className="space-y-4">
+        <SectionHead index="F" title="Servicing" />
+        <DelegatePanel note={note} isOriginator={isOriginator} onDone={refetch} />
         <ServicingLog note={note} />
       </section>
     </div>
