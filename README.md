@@ -8,22 +8,30 @@ Built from scratch at ETHOnline 2026 (Sep 4–13) by Furqaan and Apurva.
 
 ## Status
 
-Day 4 of 10. Contracts are deployed and verified on Arc testnet; the agent
-services notes unattended; all three paid endpoints take money from a cold
-wallet.
+Day 6 of 10. Contracts are deployed on Arc testnet; the agent services notes
+unattended; all three paid endpoints take money from a cold wallet. Automatic
+repayment is half-built: the contract and the agent's decision are done, the
+plumbing between them is not.
 
 | | |
 |---|---|
-| `contracts/` | 7 deployed and **verified** on Arc testnet, with a real personhood verifier. 126 tests, plus a 37-assertion run against a live node |
-| `backend/` | Agent, verification, documents, and three x402 endpoints. 66 tests and five end-to-end suites |
-| `subgraph/` | 13 entities, 22 handlers. Published at **v0.0.5**, synced to head, no indexing errors |
+| `contracts/` | 8 deployed on Arc testnet, 4 verified, with a real personhood verifier. 137 tests, plus a 37-assertion run against a live node |
+| `backend/` | Agent, verification, documents, and three x402 endpoints. 74 tests and five end-to-end suites |
+| `subgraph/` | 13 entities, 22 handlers. Published at **v0.0.5**, indexing to head — but against the contracts replaced on Sep 9 |
 | `web/` | Next.js 16, seven routes. `/intel` is still a stub; everything else is live. 28 tests |
 | Specs | [docs/](docs/), eight documents. Read the relevant one before changing an interface |
 
-**The subgraph is live and correct.** It points at the current contract set,
-indexes to chain head, and is what `/proposals`, `/note/[address]` and the
-agent console read. Two failures got it there and both are worth knowing about,
-because neither announced itself:
+**The subgraph indexes cleanly and points at the wrong contracts.** The Sep 9
+redeploy moved every address, and the published `v0.0.5` still indexes the
+Sep 7 set — it answers queries, reports `hasIndexingErrors: false`, and returns
+a world that no longer exists. The manifest in this repo is already synced;
+publishing it needs a Studio key. `web/.env` is also still pinned to `v0.0.4`,
+a version behind what is published.
+
+That failure mode — healthy and wrong — has now happened twice, which is why
+`bun run deploy:studio` refuses to publish when the manifest and
+`contracts/deployments/<chainId>.json` disagree. Both earlier instances are
+worth knowing about, because neither announced itself:
 
 - The published manifest pointed at the pre-verifier-swap addresses. Studio
   reported healthy and returned an empty world. Addresses now derive from
@@ -217,18 +225,26 @@ Money is `bigint` integer arithmetic from the contract to the render call, and d
 
 ## Deployed — Arc testnet (chain 5042002)
 
-All seven deployed and **verified on Blockscout**, redeployed Sep 7 with a real
-personhood verifier.
+All eight deployed at block 61222219 on Sep 9, replacing the Sep 7 set. The
+addition is `RepaymentMandate`, which collects a repayment the borrower has
+already signed for — see [Automatic repayment](#automatic-repayment).
+
+Four are **verified on Blockscout**; `Offering`, `RepaymentVault`,
+`ServicingRelay` and `RepaymentMandate` are not, because Blockscout rate-limits
+verification submissions and retries have not yet cleared. Source is in the
+repo and the bytecode is reproducible with the pinned toolchain in either
+case.
 
 | Contract | Address | |
 |---|---|---|
-| `PartyRegistry` | [`0x8707609D5d759210bc65c5A1dd55ca5323c5a5E2`](https://testnet.arcscan.app/address/0x8707609D5d759210bc65c5A1dd55ca5323c5a5E2) | One human, one address |
-| `IssuanceQueue` | [`0x33C3Da08E7e214c9F02Dae4C92D0CD55747f8181`](https://testnet.arcscan.app/address/0x33C3Da08E7e214c9F02Dae4C92D0CD55747f8181) | propose → accept → approve → mint |
-| `NoteFactory` | [`0x8C054C0a11Eb9b03ecA160cECf5E68F60ad2E0Dd`](https://testnet.arcscan.app/address/0x8C054C0a11Eb9b03ecA160cECf5E68F60ad2E0Dd) | Deploys notes at a CREATE2 address |
-| `RepaymentVault` | [`0xD8f1c0e1905E73ed68f47608c99b9b1903F17536`](https://testnet.arcscan.app/address/0xD8f1c0e1905E73ed68f47608c99b9b1903F17536) | Holds value between repayment and distribution |
-| `ServicingRelay` | [`0xa11f810c650A19F2E6a74828dB73EA29B8C6904D`](https://testnet.arcscan.app/address/0xa11f810c650A19F2E6a74828dB73EA29B8C6904D) | The agent's only reachable surface |
-| `Offering` | [`0xF41B6a5354a8aB5B54Db0605F5bDbc2e15E5e5BB`](https://testnet.arcscan.app/address/0xF41B6a5354a8aB5B54Db0605F5bDbc2e15E5e5BB) | List, reprice, delist, buy |
-| `PersonhoodVerifier` | [`0xDAce270A9991E838bC858884156022fd5ae43aDa`](https://testnet.arcscan.app/address/0xDAce270A9991E838bC858884156022fd5ae43aDa) | `AttestedVerifier` — see the caveat below |
+| `PartyRegistry` | [`0x7D7c277cdE9abB358EC86159fc8D7d81612a54E0`](https://testnet.arcscan.app/address/0x7D7c277cdE9abB358EC86159fc8D7d81612a54E0) | One human, one address |
+| `IssuanceQueue` | [`0xAa12c887b52e3B9F3d1B8F3E5c64183D8c418b9a`](https://testnet.arcscan.app/address/0xAa12c887b52e3B9F3d1B8F3E5c64183D8c418b9a) | propose → accept → approve → mint |
+| `NoteFactory` | [`0x28B9c810A2192576Be7caFE2B3fCd9FE9C34c262`](https://testnet.arcscan.app/address/0x28B9c810A2192576Be7caFE2B3fCd9FE9C34c262) | Deploys notes at a CREATE2 address |
+| `RepaymentVault` | [`0x5E33f9be7F6008059fEcC429A94Fed017Bd5A25d`](https://testnet.arcscan.app/address/0x5E33f9be7F6008059fEcC429A94Fed017Bd5A25d) | Holds value between repayment and distribution |
+| `ServicingRelay` | [`0xf7974A5bB7caAE07D6d0633B3f6Ac35fb8C06CB6`](https://testnet.arcscan.app/address/0xf7974A5bB7caAE07D6d0633B3f6Ac35fb8C06CB6) | The agent's only reachable surface |
+| `Offering` | [`0x1eb3452C7eAF66C736fC935796999CCf1105fc91`](https://testnet.arcscan.app/address/0x1eb3452C7eAF66C736fC935796999CCf1105fc91) | List, reprice, delist, buy |
+| `RepaymentMandate` | [`0x81b0334115f5641dDE86D7696C52020558Ab84a5`](https://testnet.arcscan.app/address/0x81b0334115f5641dDE86D7696C52020558Ab84a5) | Pulls a repayment the borrower signed for |
+| `PersonhoodVerifier` | [`0x89bFE1652c0fB4958701ed5D7e8Ca5c580d67250`](https://testnet.arcscan.app/address/0x89bFE1652c0fB4958701ed5D7e8Ca5c580d67250) | `AttestedVerifier` — see the caveat below |
 
 Deployed and wired by `contracts/script/deploy-testnet.sh`, which refuses to run
 unless the RPC reports chain 5042002. Every wiring edge was then checked by
@@ -266,6 +282,48 @@ package reads. Nothing hardcodes an address.
 `RWANote` is deployed per note by `NoteFactory` at a CREATE2 address, so the UI can route to a note before its transaction confirms.
 
 **Arc testnet is chain 5042002**, confirmed against the RPC rather than taken from a config file — `eth_chainId` at `https://rpc.testnet.arc.network` returns `0x4cef52`. Explorer is [testnet.arcscan.app](https://testnet.arcscan.app). Mainnet is 5042. Both chains use USDC as the native currency at 18 decimals, which is worth checking twice before writing any amount: an 18-decimal native asset and a 6-decimal ERC-20 of the same name are a twelve-order-of-magnitude mistake waiting to be made.
+
+## Automatic repayment
+
+Arc settles in native USDC, and native value cannot be pulled — there is no
+allowance on `msg.value`. So a keeper cannot simply debit a borrower. The same
+balance has an ERC-20 face at Circle's precompile
+(`0x3600…0000`, 6 decimals against the native 18), and that one speaks
+EIP-3009. `RepaymentMandate` pulls there and pays natively in the same call:
+what arrives as token is spendable as native, because it is one balance.
+
+```
+balance of 0x3513…7817:  native 20778236404381026843
+                          erc20 20778236   ← native / 1e12, exactly
+```
+
+**Not `approve`.** An allowance is standing permission to take, bounded only by
+its size and living until revoked. A mandate is single-use and bound to one
+note, one period, one amount, one window. The amount and window come from the
+signature; the note and period come from a derived nonce:
+
+```solidity
+keccak256(abi.encode(address(this), block.chainid, noteId, periodIndex))
+```
+
+Nothing is left for whoever holds the signature to choose, which is why
+`collect` is safe to leave permissionless — exactly like `repay`. The keeper
+supplies gas and no authority. Eleven tests ask the same question in different
+ways: replayed, moved to another period, moved to another note, forged, run
+early, run late, value parked in the contract. Each is refused.
+
+The agent's `COLLECT` sits above both the grace wait and the delinquency mark.
+A mandate that expires unused is a repayment the borrower authorised and nobody
+carried out, and the delinquency that follows is one the agent manufactured —
+in a system whose product is the repayment record, that is the worst bug
+available. It does not outrank two things: a funded period settles instead, so
+nothing is pulled twice, and a closed cure window still defaults, because past
+it the note's fate is decided and taking more money does not change it.
+
+**What is not built yet.** `decide` can return `COLLECT`; nothing carries it
+out. The executor has no branch that sends `collect`, mandates have nowhere to
+be stored, there is no route for a borrower to sign them, and the loop does not
+fetch one. Until those land, repayment is push-only and the borrower sends it.
 
 ## Running it
 

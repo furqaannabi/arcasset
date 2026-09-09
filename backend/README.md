@@ -78,9 +78,22 @@ Every decision is logged, including the ones to do nothing:
   "reason": "short by 1000000000000000000000, grace until 1788680497" }
 ```
 
-`decision` is `SETTLE`, `WAIT`, `DELINQUENT` or `DEFAULT`. A `DEFAULT` line with
-`"dryRun": true` means the agent decided to default a note and did not send it —
-that path stays off until a human sets `DEFAULT_DRY_RUN=false`.
+`decision` is `SETTLE`, `COLLECT`, `WAIT`, `DELINQUENT` or `DEFAULT`. A
+`DEFAULT` line with `"dryRun": true` means the agent decided to default a note
+and did not send it — that path stays off until a human sets
+`DEFAULT_DRY_RUN=false`.
+
+`COLLECT` means the period is short and the borrower has already signed a
+mandate covering it. It ranks above both the grace wait and the delinquency
+mark, because a mandate left uncollected turns into a delinquency the agent
+manufactured. It does not outrank a funded period (which settles, so nothing is
+pulled twice) or a closed cure window (which defaults).
+
+**`COLLECT` is decided but not yet executed.** `decide` returns it and the
+contract is deployed at `0x81b0334115f5641dDE86D7696C52020558Ab84a5`, but the
+executor has no branch for it, mandates have nowhere to be stored, and no route
+exists for a borrower to sign one. Until that lands the agent will never see a
+mandate, so it never returns `COLLECT` in practice.
 
 ### Identity
 
