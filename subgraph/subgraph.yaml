@@ -149,6 +149,28 @@ dataSources:
       file: ./src/repayment-vault.ts
 
   - kind: ethereum
+    name: RepaymentMandate
+    network: arc-testnet
+    source:
+      address: "0x81b0334115f5641dDE86D7696C52020558Ab84a5"
+      abi: RepaymentMandate
+      startBlock: 61222219
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Repayment
+        - RepaymentIndex
+      abis:
+        - name: RepaymentMandate
+          file: ./abis/RepaymentMandate.json
+      eventHandlers:
+        - event: Collected(indexed uint256,indexed uint16,indexed address,uint256)
+          handler: handleCollected
+      file: ./src/repayment-mandate.ts
+
+  - kind: ethereum
     name: ServicingRelay
     network: arc-testnet
     source:

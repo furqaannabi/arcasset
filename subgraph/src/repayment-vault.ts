@@ -1,7 +1,7 @@
 import { Address } from "@graphprotocol/graph-ts";
 import { Repaid } from "../generated/RepaymentVault/RepaymentVault";
-import { Repayment, Period, Note, NoteIndex, Originator, Borrower } from "../generated/schema";
-import { loadOrCreateProtocolDay, txLogId } from "./helpers";
+import { Repayment, RepaymentIndex, Period, Note, NoteIndex, Originator, Borrower } from "../generated/schema";
+import { loadOrCreateProtocolDay, repaymentKey, txLogId } from "./helpers";
 
 /**
  * One Repaid can cover several periods (RepaymentVault.repay() cascades
@@ -28,9 +28,21 @@ export function handleRepaid(event: Repaid): void {
   repayment.onTime = event.params.onTime;
   repayment.byThirdParty = event.params.payer.notEqual(Address.fromBytes(note.borrower));
   repayment.byOriginator = event.params.payer.equals(Address.fromBytes(note.originator));
+  // Set here so the field is never null, and flipped by repayment-mandate.ts
+  // if a Collected follows in this same transaction. A push repayment never
+  // reaches that handler and stays false.
+  repayment.collected = false;
   repayment.timestamp = event.params.timestamp;
   repayment.txHash = event.transaction.hash;
   repayment.save();
+
+  // Collected fires later in the same transaction and knows the note and the
+  // period but not this row's id, which is a log index. Leave it a way back.
+  const marker = new RepaymentIndex(
+    repaymentKey(event.transaction.hash, note.id, event.params.periodIndex),
+  );
+  marker.repayment = repayment.id;
+  marker.save();
 
   note.totalRepaid = note.totalRepaid.plus(event.params.amount);
   note.save();

@@ -56,3 +56,12 @@ export function loadOrCreateProtocolDay(timestamp: BigInt): ProtocolDay {
   }
   return day as ProtocolDay;
 }
+
+/**
+ * The key a Repaid and the Collected that caused it agree on: fixed-length, so
+ * two repayments in one transaction cannot collide the way a variable-length
+ * encoding of noteId could.
+ */
+export function repaymentKey(txHash: Bytes, note: Bytes, periodIndex: i32): Bytes {
+  return txHash.concat(note).concatI32(periodIndex);
+}
