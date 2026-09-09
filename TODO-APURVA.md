@@ -1,7 +1,8 @@
 # Apurva — handoff, Sep 9
 
-Contracts were redeployed today and a new one was added. Everything below is a
-consequence of that, in the order it blocks other work.
+Contracts were redeployed today and a new one was added. Sections 1–3 are
+consequences of that. Section 4 is frontend work that was already outstanding,
+including two gaps that quietly break the demo.
 
 I touched one file in your lane — `subgraph/subgraph.yaml` — because the
 redeploy invalidated it and `sync:check` refuses to publish until it matches.
@@ -80,12 +81,62 @@ from the deployments JSON.
 `0xc7B27c74…` was the verified test wallet on the old registry. It is not
 verified any more.
 
-## 4. Still open in your lane
+## 4. Frontend
 
-- `/intel` is a stub. It is the one route that carries the sponsor story for
-  the paid API.
-- Once the mandate plumbing lands on the backend, the borrower needs somewhere
-  to sign mandates — probably at accept time, in the proposal flow.
+The write paths that exist: propose, accept, admin approve, reject, mint,
+verify, list, delist, buy, claim. The gaps below are ordered by what breaks the
+demo, not by size. The first two are the ones I would not go on stage without.
+
+### 4a. Delegate to the agent — demo-blocking
+
+There is no `delegate` call anywhere in `web/`. Not in a component, not even in
+`abis.ts`. And every servicing entry point is gated on it:
+
+```solidity
+// ServicingRelay.settlePeriod, markDelinquent, markDefaulted
+if (msg.sender != agentOf[noteId]) revert NotDelegated();
+```
+
+So **a note minted through the UI is never serviced by the agent.** It sits
+there. The unattended-servicing story currently only works for notes the seed
+script created, because the script calls `relay.delegate(noteId, agent)` and
+nothing in the browser does.
+
+`ServicingRelay.delegate(uint256 noteId, address agent)`, originator only.
+Natural home is the mint success state or the note page. The agent's address is
+on `GET /health` under `agent.address`.
+
+### 4b. The borrower cannot pay — demo-blocking
+
+`REPAYMENT_VAULT` is exported from `lib/deployments.ts` and used by nothing.
+Every mention of "repay" in `web/` is prose. There is no way for a borrower to
+make a payment from the browser; today it takes a script.
+
+`RepaymentVault.repay(uint256 noteId, uint16 periodIndex)` is `payable` and
+permissionless — send native value, no approve step. Amount due per period is
+`note.periodDue(index)`. Watch the units: this one is **18-decimal native**,
+unlike the mandate's 6-decimal token.
+
+### 4c. `/intel` is a 26-line stub
+
+The one route carrying the x402 sponsor story, and the product the whole
+pitch ends on. The three paid endpoints work and are tested against a cold
+wallet — see `backend/README.md` under Intel for shapes and prices.
+
+### 4d. Smaller, real
+
+- **`Offering.sweepEscrow(noteId)`** — coupons accrue on listed-but-unsold
+  tokens while they sit in escrow, and the originator has no way to collect
+  them. That is money left on the table with no UI to reach it.
+- **`Offering.relist(noteId, priceBps)`** — reprice in place. Today the only
+  way to change a price is delist and list again.
+
+### 4e. Later — needs the backend first
+
+Once the mandate plumbing lands, the borrower needs somewhere to sign mandates.
+Accept time is the natural moment: they are already signing, already looking at
+the schedule, and a mandate per period is exactly the shape of that schedule.
+Nothing to build against yet — I will say when there is.
 
 ## What I changed today, for context
 
