@@ -21,6 +21,7 @@ export type Deployment = {
   ServicingRelay: Address;
   Offering: Address;
   PersonhoodVerifier: Address;
+  RepaymentMandate: Address;
 };
 
 function load(): Deployment {
@@ -47,3 +48,4 @@ export const NOTE_FACTORY = DEPLOYMENT.NoteFactory;
 export const REPAYMENT_VAULT = DEPLOYMENT.RepaymentVault;
 export const SERVICING_RELAY = DEPLOYMENT.ServicingRelay;
 export const OFFERING = DEPLOYMENT.Offering;
+export const REPAYMENT_MANDATE = DEPLOYMENT.RepaymentMandate;

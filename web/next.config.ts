@@ -33,6 +33,7 @@ function loadDeployment(chainId: number): string {
   const required = [
     "PartyRegistry", "IssuanceQueue", "NoteFactory",
     "RepaymentVault", "ServicingRelay", "Offering",
+    "RepaymentMandate",
   ];
   for (const key of required) {
     const v = parsed[key];

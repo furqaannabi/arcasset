@@ -372,3 +372,22 @@ export const servicingRelayAbi = [
     outputs: [{ type: "address" }],
   },
 ] as const;
+
+/**
+ * The mandate contract. Only `mandateNonce` is called from the browser: the
+ * borrower has to sign the nonce the contract will derive, and a nonce chosen
+ * anywhere else produces a signature the token accepts and `collect` cannot
+ * use. Collecting itself is the agent's job and is never done from here.
+ */
+export const repaymentMandateAbi = [
+  {
+    type: "function",
+    name: "mandateNonce",
+    stateMutability: "view",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "periodIndex", type: "uint16" },
+    ],
+    outputs: [{ type: "bytes32" }],
+  },
+] as const;

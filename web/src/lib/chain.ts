@@ -37,3 +37,17 @@ export function txUrl(hash: string) {
 export function addressUrl(address: string) {
   return EXPLORER_URL ? `${EXPLORER_URL}/address/${address}` : "";
 }
+
+/**
+ * Circle's FiatToken precompile — the ERC-20 face of the same balance the
+ * chain settles natively.
+ *
+ * `balanceOf` here is exactly the native balance divided by 1e12: one money,
+ * two scales, differing by a trillion. Everything in this app is native and
+ * 18-decimal except two things that sign against the token — x402 payments and
+ * repayment mandates — and both go through this constant rather than a literal.
+ */
+export const USDC_ERC20 = "0x3600000000000000000000000000000000000000" as const;
+
+/** The token's decimals, not the chain's. 6 against native's 18. */
+export const TOKEN_DECIMALS = 6;
