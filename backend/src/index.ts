@@ -26,7 +26,12 @@ const wallet = config.agentKey
   : null;
 
 if (config.agentKey && wallet) {
-  const executor = new ChainExecutor(publicClient, wallet, deployment.ServicingRelay);
+  const executor = new ChainExecutor(
+    publicClient,
+    wallet,
+    deployment.ServicingRelay,
+    deployment.RepaymentMandate,
+  );
   const source = new RpcNoteSource(
     publicClient,
     deployment.NoteFactory,

@@ -1,7 +1,7 @@
 import type { Address, Hash } from "viem";
 import { decide } from "./decide";
 import type { Action, Decision } from "./decide";
-import type { NoteSource, ServiceableNote } from "./source";
+import type { NoteSource, PeriodMandate, ServiceableNote } from "./source";
 
 /**
  * The tick. Reads, decides, acts, records — and stops itself when any of the
@@ -14,6 +14,7 @@ import type { NoteSource, ServiceableNote } from "./source";
 
 export interface Executor {
   settlePeriod(noteId: bigint, index: number): Promise<Hash>;
+  collect(noteId: bigint, index: number, mandate: PeriodMandate): Promise<Hash>;
   markDelinquent(noteId: bigint, index: number): Promise<Hash>;
   markDefaulted(noteId: bigint): Promise<Hash>;
   gasBalance(): Promise<bigint>;
@@ -102,7 +103,11 @@ export async function tick(
         return report;
       }
 
-      const d = decide(entry.note, period, now);
+      // The fourth argument and the COLLECT branch below land together, as
+      // docs/09-mandate.md insists: passing this without a branch to receive it
+      // is what would have defaulted a borrower who had signed to pay.
+      const mandate = entry.mandates[period.index] ?? null;
+      const d = decide(entry.note, period, now, mandate);
       const line: LogLine = {
         noteId: entry.note.noteId.toString(),
         period: period.index,
@@ -134,7 +139,7 @@ export async function tick(
         }
       }
 
-      await act(entry, period.index, d, executor, report, line);
+      await act(entry, period.index, d, executor, report, line, mandate);
     }
   }
 
@@ -148,13 +153,14 @@ async function act(
   executor: Executor,
   report: TickReport,
   line: LogLine,
+  mandate: PeriodMandate | null,
 ): Promise<void> {
   const noteId = entry.note.noteId;
   try {
     // Sends are awaited one at a time, deliberately. A single signer with
     // parallel sends is a nonce collision waiting to happen, and the throughput
     // we would gain is throughput we do not need.
-    const tx = await send(d.action, executor, noteId, index);
+    const tx = await send(d.action, executor, noteId, index, mandate);
 
     report.actionsTaken++;
     report.log.push({ ...line, tx });
@@ -186,6 +192,7 @@ export async function send(
   executor: Executor,
   noteId: bigint,
   index: number,
+  mandate: PeriodMandate | null = null,
 ): Promise<Hash> {
   switch (action) {
     case "SETTLE":
@@ -195,11 +202,12 @@ export async function send(
     case "DEFAULT":
       return executor.markDefaulted(noteId);
     case "COLLECT":
-      // Reachable the moment loop passes decide() a mandate. Until the executor
-      // can pull one, refusing loudly is the only safe answer — this is caught
-      // and logged as an error against the period, which is a visible nothing
-      // rather than an invisible something.
-      throw new Error("COLLECT decided, but the executor cannot carry it out yet");
+      // decide only returns COLLECT when it was handed a mandate, so this is
+      // unreachable in the loop. It stays because `send` is called directly by
+      // tests, and because an unchecked null here would be a send with no
+      // authority behind it.
+      if (!mandate) throw new Error("COLLECT decided with no mandate to collect");
+      return executor.collect(noteId, index, mandate);
     case "WAIT":
       throw new Error("WAIT reached act(), which filters it");
     default: {

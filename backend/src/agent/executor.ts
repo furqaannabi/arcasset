@@ -1,5 +1,8 @@
 import type { Account, Address, Hash, Hex, PublicClient, WalletClient } from "viem";
-import { relayAbi } from "@/chain/abis";
+import { prisma } from "@/db";
+import { mandateAbi, relayAbi } from "@/chain/abis";
+import { splitSignature } from "@/mandates/verify";
+import type { PeriodMandate } from "./source";
 import type { Executor } from "./loop";
 
 /**
@@ -15,6 +18,8 @@ export class ChainExecutor implements Executor {
     private readonly publicClient: PublicClient,
     private readonly wallet: WalletClient,
     private readonly relay: Address,
+    /** RepaymentMandate. The only contract reached that is not the relay. */
+    private readonly collector?: Address,
   ) {}
 
   get address(): Address {
@@ -35,6 +40,46 @@ export class ChainExecutor implements Executor {
 
   markDefaulted(noteId: bigint): Promise<Hash> {
     return this.send("markDefaulted", [noteId]);
+  }
+
+  /**
+   * Pull a repayment the borrower signed for.
+   *
+   * The only send that touches somebody else's money, and the agent supplies
+   * none of the authority for it — every field below came from the borrower's
+   * signature, and the contract re-derives the nonce itself. A compromised
+   * agent key can pay a borrower's own debt early and nothing else.
+   */
+  async collect(noteId: bigint, index: number, m: PeriodMandate): Promise<Hash> {
+    if (!this.collector) throw new Error("no RepaymentMandate address configured");
+    const { v, r, s } = splitSignature(m.signature);
+    const { request } = await this.publicClient.simulateContract({
+      address: this.collector,
+      abi: mandateAbi,
+      functionName: "collect",
+      args: [
+        noteId,
+        index,
+        { value: m.value, validAfter: BigInt(m.validAfter), validBefore: BigInt(m.validBefore), v, r, s },
+      ],
+      account: this.wallet.account as Account,
+    });
+    const hash = await this.wallet.writeContract(request as never);
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
+    if (receipt.status !== "success") throw new Error(`collect reverted on-chain in ${hash}`);
+
+    // Recorded only after the receipt, and only on success. Marking it earlier
+    // would strand a mandate whose transaction never landed — the token would
+    // still honour it, and we would never offer it again.
+    await prisma.mandate.update({
+      where: { noteId_periodIndex: { noteId: noteId.toString(), periodIndex: index } },
+      data: { collectedTx: hash },
+    }).catch(() => {
+      // The pull succeeded; losing the bookkeeping must not turn that into a
+      // thrown error. Worst case it is offered again and the token refuses it.
+      console.warn(`[agent] collected ${noteId}/${index} in ${hash} but could not mark it spent`);
+    });
+    return hash;
   }
 
   /**

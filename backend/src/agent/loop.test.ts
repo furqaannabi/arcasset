@@ -3,7 +3,7 @@ import { tick, send } from "./loop";
 import type { AgentConfig, Executor } from "./loop";
 import { NoteStatus, PeriodStatus } from "./decide";
 import type { NoteView, PeriodView } from "./decide";
-import type { NoteSource, ServiceableNote } from "./source";
+import type { NoteSource, PeriodMandate, ServiceableNote } from "./source";
 import type { Address, Hash } from "viem";
 
 const AGENT = "0x00000000000000000000000000000000000000a1" as Address;
@@ -39,6 +39,7 @@ class FakeExecutor implements Executor {
   settles: Array<[bigint, number]> = [];
   delinquents: Array<[bigint, number]> = [];
   defaults: bigint[] = [];
+  collects: Array<[bigint, number, bigint]> = [];
   inFlight = 0;
   maxConcurrent = 0;
   constructor(
@@ -66,6 +67,9 @@ class FakeExecutor implements Executor {
   markDefaulted(id: bigint) {
     return this.record(() => this.defaults.push(id));
   }
+  collect(id: bigint, i: number, m: PeriodMandate) {
+    return this.record(() => this.collects.push([id, i, m.value]));
+  }
   async gasBalance() {
     return this.balance;
   }
@@ -87,10 +91,15 @@ const period = (over: Partial<PeriodView> = {}): PeriodView => ({
   status: PeriodStatus.Pending,
   ...over,
 });
-const entry = (n: NoteView, ps: PeriodView[]): ServiceableNote => ({
+const entry = (
+  n: NoteView,
+  ps: PeriodView[],
+  mandates: ServiceableNote["mandates"] = {},
+): ServiceableNote => ({
   note: n,
   address: "0x00000000000000000000000000000000000000ff" as Address,
   periods: ps,
+  mandates,
 });
 
 describe("acting", () => {
@@ -218,16 +227,34 @@ describe("failure handling", () => {
 });
 
 describe("dispatch", () => {
+  const mandate = (over: Partial<PeriodMandate> = {}): PeriodMandate => ({
+    periodIndex: 0,
+    value: 1_000_000n,
+    validAfter: NOW - DAY,
+    validBefore: NOW + DAY,
+    signature: ("0x" + "11".repeat(65)) as `0x${string}`,
+    ...over,
+  });
+
   test("COLLECT never becomes a default", async () => {
     // The regression this guards: COLLECT joined the Action union while the
     // dispatch was a ternary chain, whose final arm was markDefaulted. It
     // compiled, every test stayed green, and the agent would have defaulted a
     // borrower who had signed to pay.
     const ex = new FakeExecutor();
-    await expect(send("COLLECT", ex, 1n, 0)).rejects.toThrow(/cannot carry it out yet/);
+    await send("COLLECT", ex, 1n, 0, mandate());
+    expect(ex.collects).toEqual([[1n, 0, 1_000_000n]]);
     expect(ex.defaults).toEqual([]);
     expect(ex.settles).toEqual([]);
     expect(ex.delinquents).toEqual([]);
+  });
+
+  test("COLLECT without a mandate sends nothing at all", async () => {
+    // A send with no authority behind it is worse than no send.
+    const ex = new FakeExecutor();
+    await expect(send("COLLECT", ex, 1n, 0, null)).rejects.toThrow(/no mandate/);
+    expect(ex.collects).toEqual([]);
+    expect(ex.defaults).toEqual([]);
   });
 
   test("each action reaches its own executor call", async () => {
@@ -244,5 +271,44 @@ describe("dispatch", () => {
     const ex = new FakeExecutor();
     await expect(send("WAIT", ex, 1n, 0)).rejects.toThrow(/filters it/);
     expect(ex.defaults).toEqual([]);
+  });
+});
+
+describe("mandates in the loop", () => {
+  const m = (over: Partial<PeriodMandate> = {}): PeriodMandate => ({
+    periodIndex: 0,
+    value: 1_000_000n,
+    validAfter: NOW - DAY,
+    validBefore: NOW + DAY,
+    signature: ("0x" + "22".repeat(65)) as `0x${string}`,
+    ...over,
+  });
+
+  test("a lodged mandate is collected instead of marking the period late", async () => {
+    const n = note();
+    const ps = [period({ end: NOW - 5 * DAY, paid: 0n })];
+    const ex = new FakeExecutor();
+
+    // Without one, the same state is a delinquency.
+    await tick(new FakeSource([entry(n, ps)]), ex, config(), NOW);
+    expect(ex.delinquents).toEqual([[1n, 0]]);
+    expect(ex.collects).toEqual([]);
+
+    const ex2 = new FakeExecutor();
+    await tick(new FakeSource([entry(n, ps, { 0: m() })]), ex2, config(), NOW);
+    expect(ex2.collects).toEqual([[1n, 0, 1_000_000n]]);
+    expect(ex2.delinquents).toEqual([]);
+    expect(ex2.defaults).toEqual([]);
+  });
+
+  test("a mandate for another period does not rescue this one", async () => {
+    const ex = new FakeExecutor();
+    const ps = [period({ end: NOW - 5 * DAY, paid: 0n })];
+    await tick(
+      new FakeSource([entry(note(), ps, { 1: m({ periodIndex: 1 }) })]),
+      ex, config(), NOW,
+    );
+    expect(ex.collects).toEqual([]);
+    expect(ex.delinquents).toEqual([[1n, 0]]);
   });
 });

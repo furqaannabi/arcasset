@@ -1,5 +1,6 @@
-import type { Address, PublicClient } from "viem";
+import type { Address, Hex, PublicClient } from "viem";
 import { noteAbi, noteFactoryAbi, relayAbi, vaultAbi } from "@/chain/abis";
+import { prisma } from "@/db";
 import { NoteStatus, PeriodStatus } from "./decide";
 import type { NoteView, PeriodView } from "./decide";
 
@@ -29,10 +30,28 @@ export interface NoteSource {
   chainTime(): Promise<number>;
 }
 
+/**
+ * A mandate as the agent needs it: the window and amount to decide with, and
+ * the signature to act with.
+ *
+ * `decide` sees only the first three — it must not be able to spend anything,
+ * and a pure function holding a signature is a pure function one refactor away
+ * from being impure.
+ */
+export type PeriodMandate = {
+  periodIndex: number;
+  value: bigint;
+  validAfter: number;
+  validBefore: number;
+  signature: Hex;
+};
+
 export type ServiceableNote = {
   note: NoteView;
   address: Address;
   periods: PeriodView[];
+  /** Keyed by period index. Absent when nothing is lodged. */
+  mandates: Record<number, PeriodMandate>;
 };
 
 export class RpcNoteSource implements NoteSource {
@@ -121,6 +140,32 @@ export class RpcNoteSource implements NoteSource {
       });
     }
 
-    return { note, address, periods };
+    return { note, address, periods, mandates: await this.mandatesFor(id) };
+  }
+
+  /**
+   * Mandates lodged for this note and not yet spent.
+   *
+   * The first thing the agent reads that is not the chain, which is why it
+   * lives behind this interface with everything else. A spent mandate is
+   * excluded here rather than filtered later: the token would refuse it
+   * anyway, and offering one to `decide` would produce a COLLECT that can only
+   * fail.
+   */
+  private async mandatesFor(noteId: bigint): Promise<Record<number, PeriodMandate>> {
+    const rows = await prisma.mandate.findMany({
+      where: { noteId: noteId.toString(), collectedTx: null },
+    });
+    const out: Record<number, PeriodMandate> = {};
+    for (const r of rows) {
+      out[r.periodIndex] = {
+        periodIndex: r.periodIndex,
+        value: BigInt(r.value),
+        validAfter: Number(r.validAfter),
+        validBefore: Number(r.validBefore),
+        signature: r.signature as Hex,
+      };
+    }
+    return out;
   }
 }
