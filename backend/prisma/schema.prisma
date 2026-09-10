@@ -86,3 +86,36 @@ model SpentAuthorization {
 
   @@index([payer])
 }
+
+/// A repayment the borrower has signed for but nobody has collected yet.
+///
+/// Pre-chain by definition: a mandate exists only as a signature until the
+/// agent spends it, at which point the chain becomes the record and this row is
+/// history. That is why it belongs here and note state does not — see
+/// docs/04-backend.md.
+///
+/// The composite key is the invariant, not a convenience.
+/// `RepaymentMandate.mandateNonce` derives the EIP-3009 nonce from
+/// (contract, chainId, noteId, periodIndex), so one mandate per period exists by
+/// construction — a second signature for the same period signs the same nonce,
+/// and the token honours only one of them. The schema refuses rows the chain
+/// could not.
+model Mandate {
+  noteId      String
+  periodIndex Int
+  borrower    String
+  /// 6-decimal base units — the ERC-20 face, not the 18-decimal native one.
+  value       String
+  validAfter  String
+  validBefore String
+  /// Recomputed from the contract at lodging time, never taken from the client.
+  /// Unique because the token treats it that way: one nonce, one spend, ever.
+  nonce       String   @unique
+  signature   String
+  /// Set once spent, so a collect that failed mid-flight can be retried.
+  collectedTx String?
+  createdAt   DateTime @default(now())
+
+  @@id([noteId, periodIndex])
+  @@index([borrower])
+}

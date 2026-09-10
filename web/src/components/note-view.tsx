@@ -24,6 +24,7 @@ import { Button, Chip, Eyebrow, Panel, SectionHead, Stat } from "./ui";
 import { EmptyState, ErrorState, Skeleton } from "./states";
 import { StackBadge } from "./stack";
 import { NoteOffering } from "./note-offering";
+import { MandateSigner } from "./mandate-signer";
 import { DelegatePanel, RepayPanel } from "./note-servicing";
 
 /**
@@ -191,8 +192,27 @@ export function NoteView({ address }: { address: string }) {
         <Schedule note={note} />
       </section>
 
+      {isBorrower ? (
+        <section className="space-y-4">
+          <SectionHead
+            index="D"
+            title="Automatic repayment"
+            aside={<StackBadge sponsor="arc" role="signed, not allowed" muted />}
+          />
+          <MandateSigner
+            note={{
+              noteId: note.noteId,
+              borrower: note.borrower.id,
+              gracePeriod: note.gracePeriod,
+              cureWindow: note.cureWindow,
+              periods: note.periods,
+            }}
+          />
+        </section>
+      ) : null}
+
       <section className="space-y-4">
-        <SectionHead index="D" title="Repayment" />
+        <SectionHead index={isBorrower ? "E" : "D"} title="Repayment" />
         <RepayPanel
           note={note}
           isBorrower={isBorrower}
@@ -202,7 +222,7 @@ export function NoteView({ address }: { address: string }) {
       </section>
 
       <section className="space-y-4">
-        <SectionHead index="E" title="Your position" />
+        <SectionHead index={isBorrower ? "F" : "E"} title="Your position" />
         <PositionPanel note={note} position={mine} connected={connected} onDone={refetch} />
       </section>
 
@@ -212,7 +232,7 @@ export function NoteView({ address }: { address: string }) {
         someone concludes the agent is broken when it was simply never asked.
       */}
       <section className="space-y-4">
-        <SectionHead index="F" title="Servicing" />
+        <SectionHead index={isBorrower ? "G" : "F"} title="Servicing" />
         <DelegatePanel note={note} isOriginator={isOriginator} onDone={refetch} />
         <ServicingLog note={note} />
       </section>

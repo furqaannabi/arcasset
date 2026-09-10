@@ -20,6 +20,7 @@ export type Deployment = {
   RepaymentVault: Address;
   ServicingRelay: Address;
   Offering: Address;
+  RepaymentMandate: Address;
   PersonhoodVerifier: Address;
 };
 
@@ -47,3 +48,11 @@ export const NOTE_FACTORY = DEPLOYMENT.NoteFactory;
 export const REPAYMENT_VAULT = DEPLOYMENT.RepaymentVault;
 export const SERVICING_RELAY = DEPLOYMENT.ServicingRelay;
 export const OFFERING = DEPLOYMENT.Offering;
+export const REPAYMENT_MANDATE = DEPLOYMENT.RepaymentMandate;
+
+/**
+ * Circle's FiatToken precompile — the ERC-20 face of the native balance, and
+ * the contract whose EIP-712 domain a repayment mandate is signed under. Fixed
+ * by the chain, not by our deployment, which is why it is a constant here.
+ */
+export const USDC_ERC20 = "0x3600000000000000000000000000000000000000" as Address;

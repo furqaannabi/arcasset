@@ -372,3 +372,23 @@ export const servicingRelayAbi = [
     outputs: [{ type: "address" }],
   },
 ] as const;
+
+/**
+ * RepaymentMandate. Only `mandateNonce` is here: the UI reads the nonce from
+ * the contract rather than taking one from the API, because the nonce is the
+ * half of a mandate that decides *which* note and period the signature can pay,
+ * and a signature over someone else's nonce is a signature over someone else's
+ * debt.
+ */
+export const repaymentMandateAbi = [
+  {
+    type: "function",
+    name: "mandateNonce",
+    stateMutability: "view",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "periodIndex", type: "uint16" },
+    ],
+    outputs: [{ type: "bytes32" }],
+  },
+] as const;

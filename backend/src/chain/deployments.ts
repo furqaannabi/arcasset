@@ -15,12 +15,14 @@ export type Deployment = {
   RepaymentVault: Address;
   ServicingRelay: Address;
   Offering: Address;
+  RepaymentMandate: Address;
   PersonhoodVerifier: Address;
 };
 
 const REQUIRED = [
   "PartyRegistry", "IssuanceQueue", "NoteFactory",
-  "RepaymentVault", "ServicingRelay", "Offering", "PersonhoodVerifier",
+  "RepaymentVault", "ServicingRelay", "Offering", "RepaymentMandate",
+  "PersonhoodVerifier",
 ] as const;
 
 export function loadDeployment(chainId: number, root?: string): Deployment {

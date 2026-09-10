@@ -11,6 +11,7 @@ import { AgentRunner } from "./agent/runner";
 import { intelRoutes } from "./intel/routes";
 import { documentRoutes } from "./documents/routes";
 import { identityRoutes } from "./identity/routes";
+import { mandateRoutes } from "./mandates/routes";
 import { storageFromEnv, R2Storage } from "./documents/storage";
 
 const config = loadConfig();
@@ -147,6 +148,18 @@ app.route(
   ),
 );
 app.route("/documents", documentRoutes(storage, admins));
+
+app.route(
+  "/",
+  mandateRoutes({
+    publicClient,
+    factory: deployment.NoteFactory,
+    collector: deployment.RepaymentMandate,
+    usdc: config.usdcErc20,
+    chainId: config.chainId,
+    agentAddress: runner ? runner.agent : null,
+  }),
+);
 
 const attestorAddress = config.attestorKey ? privateKeyToAccount(config.attestorKey).address : null;
 app.route(

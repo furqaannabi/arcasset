@@ -125,3 +125,39 @@ export const usdcAbi = [
     outputs: [],
   },
 ] as const;
+
+/**
+ * RepaymentMandate. `mandateNonce` is a view and the only trustworthy source of
+ * the nonce a mandate must carry — recompute it, never accept the client's.
+ */
+export const mandateAbi = [
+  {
+    type: "function",
+    name: "mandateNonce",
+    stateMutability: "view",
+    inputs: [{ type: "uint256" }, { type: "uint16" }],
+    outputs: [{ type: "bytes32" }],
+  },
+  {
+    type: "function",
+    name: "collect",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "periodIndex", type: "uint16" },
+      {
+        name: "auth",
+        type: "tuple",
+        components: [
+          { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
+          { name: "validBefore", type: "uint256" },
+          { name: "v", type: "uint8" },
+          { name: "r", type: "bytes32" },
+          { name: "s", type: "bytes32" },
+        ],
+      },
+    ],
+    outputs: [],
+  },
+] as const;
