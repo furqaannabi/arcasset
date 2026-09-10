@@ -23,6 +23,13 @@ import { Modal } from "./modal";
  * approved. Only the originator, the borrower and the admin can open the
  * files: a loan agreement names people who never agreed to publish anything.
  * That rule is the backend's, not this component's — it asks and reports.
+ *
+ * Which is why Open is offered to any connected wallet rather than only to
+ * one already known to be permitted. The list is fetched without a session,
+ * since merely reading a page must not summon a wallet prompt, so at render
+ * time this cannot know who is asking. Gating the button on that unknown left
+ * the admin looking at "not yours to read" with no way to prove otherwise —
+ * the click is what signs them in.
  */
 
 type DraftFile = {
@@ -107,6 +114,10 @@ export function Agreement({
         return;
       }
       setViewing({ file, url: URL.createObjectURL(await res.blob()) });
+      // The list was fetched without a session, so mayReadContents said false.
+      // Now that there is one, ask again — otherwise the panel keeps telling a
+      // reader they cannot open what they are looking at.
+      if (!mayRead) void draft.refetch();
     } catch (e) {
       setProblem(e instanceof Error ? e.message : "could not open the file");
     } finally {
@@ -127,11 +138,7 @@ export function Agreement({
     <Panel className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <Eyebrow>Manifest hash</Eyebrow>
-        {draft.data ? (
-          <Chip tone={mayRead ? "accent" : "neutral"}>
-            {mayRead ? "you may read this" : "hashes only"}
-          </Chip>
-        ) : null}
+        {draft.data && mayRead ? <Chip tone="accent">you may read this</Chip> : null}
       </div>
 
       <p className="font-mono text-[11px] break-all text-ink">{documentHash}</p>
@@ -170,16 +177,16 @@ export function Agreement({
                   {f.contentType} · {formatBytes(f.byteSize)} · {shortAddress(f.contentHash)}
                 </p>
               </div>
-              {mayRead ? (
+              {address ? (
                 <Button
                   tone="secondary"
                   disabled={opening !== null}
                   onClick={() => open(f)}
                 >
-                  {opening === f.id ? "Opening…" : "Open"}
+                  {opening === f.id ? "Opening…" : mayRead ? "Open" : "Sign in to open"}
                 </Button>
               ) : (
-                <span className="font-mono text-[11px] text-faint">not yours to read</span>
+                <span className="font-mono text-[11px] text-faint">connect to read</span>
               )}
             </li>
           ))}
@@ -189,7 +196,7 @@ export function Agreement({
       {draft.data && !mayRead && files.length > 0 ? (
         <p className="text-[12px] leading-relaxed text-muted">
           {address
-            ? "This wallet is not the originator, the borrower, or an admin, so the contents stay closed. The hashes above are still yours to check."
+            ? "Opening asks for one signature, which is how the server learns which wallet is asking. Only the originator, the borrower and an admin get the contents; anyone else gets the hashes above, which are enough to check a document they were sent."
             : "Connect the originator's, the borrower's or an admin's wallet to open these."}
         </p>
       ) : null}
