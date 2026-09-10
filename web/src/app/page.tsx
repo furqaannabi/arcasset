@@ -3,7 +3,7 @@ import { Button, Eyebrow } from "@/components/ui";
 import { StackStrip, StackBadge } from "@/components/stack";
 import { Lifecycle } from "@/components/lifecycle";
 import { AgentLog } from "@/components/agent-log";
-import { SampleScorecard } from "@/components/sample-scorecard";
+import { IntelPreview } from "@/components/intel-preview";
 import { CHAIN } from "@/lib/chain";
 
 const CONSUMERS = [
@@ -138,9 +138,10 @@ export default function Home() {
         </div>
 
         <div className="space-y-2">
-          <SampleScorecard />
+          <IntelPreview />
           <p className="text-[11px] text-faint">
-            Illustrative response shape. Live figures come from the index.
+            Prices are live from the API. Figures belong to whichever address is
+            asked about — <Link href="/intel" className="underline underline-offset-2 hover:text-muted">buy one</Link>.
           </p>
         </div>
       </section>
