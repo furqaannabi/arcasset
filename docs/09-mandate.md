@@ -168,3 +168,86 @@ agent cannot keep and nobody will notice until a period is marked late.
   field has never been set by real data.
 - Manual repayment ships and is the demo path: `RepaymentVault.repay` from the
   note page, borrower pushes native value one period at a time.
+
+---
+
+# Reply — Furqaan, Sep 10
+
+## Both faults were real. Fixed in `809247a`.
+
+You were right in every detail, including the one that mattered most: that
+`defaultDryRun` keys on `action === "DEFAULT"` and would not have caught it.
+
+I fixed the shape rather than the case. The dispatch is now a `switch` with a
+`never` fallthrough, because the defect was not "COLLECT hit the wrong arm" —
+it was that a ternary's final arm is total, so widening `Action` could never
+fail to compile. Adding a case now breaks the build; I checked by adding a
+dummy action and watching `TS2322: Type '"PROBE"' is not assignable to type
+'never'`.
+
+`COLLECT` currently throws rather than sending anything, and that is caught and
+logged as an error against the period. A visible nothing, until the executor
+can actually pull. Three tests pin it, one asserting `COLLECT` touches no
+executor method at all.
+
+Taking your instruction literally — the `decide()` fourth argument does not
+land until the executor can carry the action out. Neither, until both.
+
+## Your open question: all of them, at accept time
+
+Agreed, with the count adjustable and defaulting to all — your option 1, for
+your reason. A partial mandate is a promise the agent cannot keep, and the
+failure is silent until a period is marked late, which is the exact outcome
+this feature exists to prevent.
+
+Two things that make the prompt count less bad than it reads:
+
+- The demo note is **three periods**, not twelve. Three prompts at accept, and
+  the schedule is already on screen at that moment.
+- They are EIP-712 signatures, not transactions. No gas, no confirmations, no
+  block wait. Wallets batch these far more gracefully than sends.
+
+If it is still too slow on camera, the cut is to sign period 0 only and let the
+demo show one collect — not to sign fewer than the schedule and call it
+covered.
+
+## Sections 1–4 are mine and not started
+
+Storage, `POST /mandates`, `source.ts`, `executor.ts`. Your spec for them is
+what I will build to; I have no changes to it. The `v < 27` note on
+`intel/settle.ts` saved me a bug, and the "recompute the nonce, never store a
+client-supplied one" rule is the right instinct — a signature over a nonce the
+contract does not derive is valid to the token and useless to `collect`.
+
+I will say here when `POST /mandates` is live, so the frontend is not blocked
+on guessing.
+
+## Something else, which is yours and mine
+
+Unrelated to mandates, found while reading `web/.env`:
+
+```
+NEXT_PUBLIC_WORLD_VERIFICATION_LEVEL=device
+```
+
+`device` proves a distinct *device*, not a distinct human. The component already
+says so on screen — "device, not personhood" — which is good. But `README.md`
+still says:
+
+> Two verified addresses are necessarily two humans — that is what the whole
+> model rests on
+
+At device level that sentence is false. One person, two phones, two addresses.
+
+Worse, and this part is mine: **the backend does not enforce a level at all.**
+`verifyWithWorld` returns `verificationLevel` and `identity/routes.ts` reads
+only `nullifierHash`. The level is whatever the client's proof claimed, so the
+frontend setting is a preference and not a control — a caller can POST a
+device-level proof to `/identity/attest` no matter what the UI asks for.
+
+I am adding a server-side minimum, configurable, defaulting to orb, reported on
+`/health` the way the public-bucket warning is. That does not decide anything
+for you: if we demo at device level, we set it explicitly and the weakening is
+deliberate and visible rather than implicit. What it does mean is that the
+README sentence has to change, or the level does. That is a product call, not
+a code one.

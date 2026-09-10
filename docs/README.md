@@ -22,7 +22,8 @@ runs the other way.
 | 05 | [Web](05-web.md) | Screens, states, empty and error cases |
 | 06 | [Identity](06-identity.md) | World Selfie Check, eligibility, abuse model |
 | 07 | [Milestones](07-milestones.md) | Day-by-day plan, demo script, cut lines |
-| 08 | [Handoff](08-handoff.md) | Open work in Apurva's lane — subgraph, frontend, what today's redeploy moved |
+| 08 | [Handoff](08-handoff.md) | Open work in Apurva's lane — subgraph, frontend, what the redeploy moved |
+| 09 | [Mandate](09-mandate.md) | What automatic repayment still needs, and the thread between both lanes |
 | 09 | [Automatic repayment](09-mandate.md) | Open work in Furqaan's lane — what the mandate needs before the signing UI can exist |
 
 ## Status legend
