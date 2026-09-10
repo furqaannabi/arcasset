@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { tick } from "./loop";
+import { tick, send } from "./loop";
 import type { AgentConfig, Executor } from "./loop";
 import { NoteStatus, PeriodStatus } from "./decide";
 import type { NoteView, PeriodView } from "./decide";
@@ -214,5 +214,35 @@ describe("failure handling", () => {
     await tick(src, ex, config(), NOW);
     // Both attempts are made; the contract, not the agent, refuses the second.
     expect(ex.settles).toEqual([[1n, 0], [1n, 0]]);
+  });
+});
+
+describe("dispatch", () => {
+  test("COLLECT never becomes a default", async () => {
+    // The regression this guards: COLLECT joined the Action union while the
+    // dispatch was a ternary chain, whose final arm was markDefaulted. It
+    // compiled, every test stayed green, and the agent would have defaulted a
+    // borrower who had signed to pay.
+    const ex = new FakeExecutor();
+    await expect(send("COLLECT", ex, 1n, 0)).rejects.toThrow(/cannot carry it out yet/);
+    expect(ex.defaults).toEqual([]);
+    expect(ex.settles).toEqual([]);
+    expect(ex.delinquents).toEqual([]);
+  });
+
+  test("each action reaches its own executor call", async () => {
+    const ex = new FakeExecutor();
+    await send("SETTLE", ex, 1n, 3);
+    await send("DELINQUENT", ex, 2n, 4);
+    await send("DEFAULT", ex, 5n, 0);
+    expect(ex.settles).toEqual([[1n, 3]]);
+    expect(ex.delinquents).toEqual([[2n, 4]]);
+    expect(ex.defaults).toEqual([5n]);
+  });
+
+  test("WAIT is refused rather than silently sent", async () => {
+    const ex = new FakeExecutor();
+    await expect(send("WAIT", ex, 1n, 0)).rejects.toThrow(/filters it/);
+    expect(ex.defaults).toEqual([]);
   });
 });

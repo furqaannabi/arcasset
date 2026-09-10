@@ -154,12 +154,7 @@ async function act(
     // Sends are awaited one at a time, deliberately. A single signer with
     // parallel sends is a nonce collision waiting to happen, and the throughput
     // we would gain is throughput we do not need.
-    const tx =
-      d.action === "SETTLE"
-        ? await executor.settlePeriod(noteId, index)
-        : d.action === "DELINQUENT"
-          ? await executor.markDelinquent(noteId, index)
-          : await executor.markDefaulted(noteId);
+    const tx = await send(d.action, executor, noteId, index);
 
     report.actionsTaken++;
     report.log.push({ ...line, tx });
@@ -171,5 +166,45 @@ async function act(
     // double-sends.
     const message = err instanceof Error ? err.message : String(err);
     report.log.push({ ...line, error: message });
+  }
+}
+
+/**
+ * The one place a decision becomes a transaction.
+ *
+ * A switch with a `never` fallthrough, not a ternary chain. This was a ternary
+ * chain, and when COLLECT joined the Action union it inherited the last arm —
+ * markDefaulted, the single irreversible act in the system — in exactly the
+ * case where the borrower had already signed to pay. Nothing failed to compile
+ * and no test went red, because a ternary's final arm is total by construction.
+ *
+ * The `never` assignment below is the actual fix. Widening Action now breaks
+ * the build here until the new case is handled.
+ */
+export async function send(
+  action: Decision["action"],
+  executor: Executor,
+  noteId: bigint,
+  index: number,
+): Promise<Hash> {
+  switch (action) {
+    case "SETTLE":
+      return executor.settlePeriod(noteId, index);
+    case "DELINQUENT":
+      return executor.markDelinquent(noteId, index);
+    case "DEFAULT":
+      return executor.markDefaulted(noteId);
+    case "COLLECT":
+      // Reachable the moment loop passes decide() a mandate. Until the executor
+      // can pull one, refusing loudly is the only safe answer — this is caught
+      // and logged as an error against the period, which is a visible nothing
+      // rather than an invisible something.
+      throw new Error("COLLECT decided, but the executor cannot carry it out yet");
+    case "WAIT":
+      throw new Error("WAIT reached act(), which filters it");
+    default: {
+      const unhandled: never = action;
+      throw new Error(`unhandled action ${String(unhandled)}`);
+    }
   }
 }
