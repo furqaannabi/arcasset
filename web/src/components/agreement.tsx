@@ -54,6 +54,7 @@ export function Agreement({
   const { address } = useAccount();
   const { ensureSession } = useSession();
   const [opening, setOpening] = useState<string | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   const draft = useQuery({
@@ -76,9 +77,19 @@ export function Agreement({
   /**
    * Opens a file in a new tab.
    *
-   * Not a plain link: the endpoint checks a bearer token, so an anchor would
-   * send an unauthenticated request and get a 403. The bytes are fetched and
-   * handed to the browser as an object URL instead.
+   * Two steps, and neither is a plain link. The endpoint checks a bearer
+   * token, so an anchor would send an unauthenticated request and get a 403.
+   * And its default answer is a 302 to a signed R2 URL, which a browser cannot
+   * follow from a fetch — R2 serves objects with no Access-Control-Allow-Origin
+   * header, so the redirect is taken and then the response is refused:
+   *
+   *   Access to fetch at 'https://…r2…' (redirected from 'http://…/files/…')
+   *   has been blocked by CORS policy
+   *
+   * So: ask for the URL with `mode=link` and navigate to it, because a
+   * top-level navigation is not a cross-origin read. Storage that cannot sign
+   * a URL answers with null, and then the bytes come back through the API,
+   * which is same-origin and fine.
    */
   async function open(file: DraftFile) {
     setProblem(null);
@@ -89,27 +100,55 @@ export function Agreement({
         setProblem("Sign in with a wallet named on this proposal to read it.");
         return;
       }
-      const res = await fetch(`${API_URL}/documents/drafts/${draftId}/files/${file.id}`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
+      const headers = { authorization: `Bearer ${token}` };
+      const base = `${API_URL}/documents/drafts/${draftId}/files/${file.id}`;
+
+      const linked = await fetch(`${base}?mode=link`, { headers });
+      if (!linked.ok) {
         setProblem(
-          res.status === 403
+          linked.status === 403
             ? "Only the originator, the borrower and the admin can open this."
-            : `Could not open the file — HTTP ${res.status}`,
+            : `Could not open the file — HTTP ${linked.status}`,
         );
         return;
       }
-      const url = URL.createObjectURL(await res.blob());
-      window.open(url, "_blank", "noopener");
-      // Revoked on a delay rather than immediately: the new tab has to load
-      // from it first, and revoking in the same tick gives a blank window.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+
+      const { url } = (await linked.json()) as { url: string | null };
+      if (url) {
+        show(url, false);
+        return;
+      }
+
+      // No signer: the API streams the bytes itself, same-origin.
+      const res = await fetch(base, { headers });
+      if (!res.ok) {
+        setProblem(`Could not open the file — HTTP ${res.status}`);
+        return;
+      }
+      show(URL.createObjectURL(await res.blob()), true);
     } catch (e) {
       setProblem(e instanceof Error ? e.message : "could not open the file");
     } finally {
       setOpening(null);
     }
+  }
+
+  /**
+   * `window.open` after an await is outside the click that started it, and
+   * some browsers treat that as a popup rather than a navigation. When it is
+   * blocked the URL is offered as a link instead of the click doing nothing
+   * visible.
+   */
+  function show(url: string, revoke: boolean) {
+    const opened = window.open(url, "_blank", "noopener");
+    if (!opened) {
+      setPending(url);
+      return;
+    }
+    // Object URLs are revoked on a delay: the new tab loads from it first, and
+    // revoking in the same tick gives a blank window. A signed R2 URL is not
+    // ours to revoke and expires on its own.
+    if (revoke) setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   const files = draft.data?.documents ?? [];
@@ -183,6 +222,22 @@ export function Agreement({
           {address
             ? "This wallet is not the originator, the borrower, or an admin, so the contents stay closed. The hashes above are still yours to check."
             : "Connect the originator's, the borrower's or an admin's wallet to open these."}
+        </p>
+      ) : null}
+
+      {pending ? (
+        <p className="text-[12px] leading-relaxed text-muted">
+          Your browser blocked the new tab.{" "}
+          <a
+            className="text-accent underline underline-offset-2"
+            href={pending}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => setPending(null)}
+          >
+            Open it manually
+          </a>{" "}
+          — the link is signed and expires in a minute.
         </p>
       ) : null}
 

@@ -241,6 +241,23 @@ export function documentRoutes(storage: Storage, adminAddresses: string[]): Hono
     if (!doc || doc.draftId !== draft.id) return c.json({ error: "not_found" }, 404);
 
     const url = await storage.signedUrl(doc.r2Key, 60);
+
+    /**
+     * `?mode=link` hands back the signed URL instead of redirecting to it.
+     *
+     * A browser cannot follow the redirect: R2 serves the object without an
+     * Access-Control-Allow-Origin header, so a cross-origin fetch that lands
+     * there is blocked after the 302 — the request succeeds and the page is
+     * refused the response. Navigating to the URL has no such problem, since
+     * a top-level navigation is not a cross-origin read.
+     *
+     * The redirect stays the default because it is what curl, a download
+     * manager and every non-browser client want.
+     */
+    if (c.req.query("mode") === "link") {
+      return c.json({ url, filename: doc.filename, contentType: doc.contentType });
+    }
+
     if (url) return c.redirect(url, 302);
 
     // Local storage cannot mint a link, so the bytes come through the API under
