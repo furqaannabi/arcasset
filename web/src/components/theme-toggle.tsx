@@ -66,17 +66,55 @@ export function ThemeToggle() {
       role="switch"
       aria-checked={isDark}
       aria-label="Dark theme"
+      title={isDark ? "Switch to light" : "Switch to dark"}
       onClick={toggle}
-      className={`relative h-4 w-7 shrink-0 rounded-full border transition-colors ${
+      className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
         isDark ? "border-accent bg-accent" : "border-line-strong bg-raised"
       }`}
     >
+      {/*
+       * The knob carries the icon rather than the track carrying two. At 20px
+       * a pair of glyphs with a puck sliding between them is mush; one glyph
+       * that changes is legible, and it says what the control *is* now rather
+       * than what it could become.
+       */}
       <span
-        className={`absolute top-[2px] h-2.5 w-2.5 rounded-full transition-[left] ${
-          isDark ? "left-[13px] bg-accent-ink" : "left-[2px] bg-muted"
+        className={`absolute top-[2px] grid h-4 w-4 place-items-center rounded-full transition-[left,background-color,color] duration-200 ${
+          isDark ? "left-[18px] bg-accent-ink text-accent" : "left-[2px] bg-panel text-muted"
         }`}
-      />
+      >
+        {isDark ? <MoonGlyph /> : <SunGlyph />}
+      </span>
     </button>
+  );
+}
+
+/**
+ * Inline, not an icon package. Two glyphs do not justify a dependency, and
+ * `currentColor` lets the knob's text colour drive them so the theme tokens
+ * stay the only place a colour is decided.
+ */
+function SunGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="3" fill="currentColor" />
+      <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <path d="M8 1v1.5M8 13.5V15M15 8h-1.5M2.5 8H1M12.95 3.05l-1.06 1.06M4.11 11.89l-1.06 1.06M12.95 12.95l-1.06-1.06M4.11 4.11L3.05 3.05" />
+      </g>
+    </svg>
+  );
+}
+
+function MoonGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" aria-hidden="true">
+      {/* One filled crescent, not a circle with a hole: a cut-out would show
+          the knob through it at this size and read as a smudge. */}
+      <path
+        d="M13.2 10.3A5.8 5.8 0 0 1 5.7 2.8a5.8 5.8 0 1 0 7.5 7.5Z"
+        fill="currentColor"
+      />
+    </svg>
   );
 }
 
