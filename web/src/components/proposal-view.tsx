@@ -20,6 +20,7 @@ import {
 import { txUrl, addressUrl } from "@/lib/chain";
 import { Button, Chip, Eyebrow, Panel, SectionHead, Stat } from "./ui";
 import { Lifecycle, type Stage } from "./lifecycle";
+import { Agreement } from "./agreement";
 import { ErrorState, Skeleton } from "./states";
 import { ScheduleChart } from "./schedule-chart";
 
@@ -179,21 +180,12 @@ export function ProposalView({ id }: { id: string }) {
 
           <section className="space-y-4">
             <SectionHead index="C" title="The agreement" />
-            <Panel>
-              <dl className="space-y-3">
-                <Row label="Manifest hash">
-                  <span className="break-all text-muted">{p.documentHash}</span>
-                </Row>
-                <Row label="Location">
-                  <span className="break-all text-muted">{p.documentURI || "—"}</span>
-                </Row>
-              </dl>
-              <p className="mt-4 border-t border-line pt-3 text-[12px] leading-relaxed text-muted">
-                The manifest hash is what is committed on-chain. Anyone can
-                recompute it from the files and compare; only the originator,
-                the borrower and the admin can read the contents.
-              </p>
-            </Panel>
+            {/*
+              The admin approves on the strength of this and the borrower
+              accepts an obligation described by it, so it is openable here
+              rather than merely hashed at.
+            */}
+            <Agreement documentURI={p.documentURI} documentHash={p.documentHash} />
           </section>
         </div>
 
@@ -399,15 +391,6 @@ function Party({ label, address, you }: { label: string; address: string; you: b
       >
         {shortAddress(address)}
       </a>
-    </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-      <dt className="eyebrow w-28 shrink-0">{label}</dt>
-      <dd className="min-w-0 font-mono text-[11.5px]">{children}</dd>
     </div>
   );
 }

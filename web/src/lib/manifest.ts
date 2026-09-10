@@ -69,3 +69,21 @@ export function rejectReason(file: File): string | null {
   }
   return null;
 }
+
+/**
+ * The draft a proposal's `documentURI` points at.
+ *
+ * The URI committed on-chain is the manifest's storage key —
+ * `drafts/<id>/manifest.json` — so the proposal carries its own draft id and
+ * nothing else has to link the two. (`Draft.proposalId` exists in the backend
+ * schema and is never written; this is the only join.)
+ *
+ * Returns null rather than guessing for anything that is not that shape: a
+ * note whose agreement was stored somewhere else is a real case, and it should
+ * read as "not listed here" rather than as a broken lookup.
+ */
+export function draftIdFrom(documentURI: string | null | undefined): string | null {
+  if (!documentURI) return null;
+  const match = /^drafts\/([^/]+)\/manifest\.json$/.exec(documentURI.trim());
+  return match?.[1] ?? null;
+}

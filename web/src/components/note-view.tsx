@@ -26,6 +26,7 @@ import { StackBadge } from "./stack";
 import { NoteOffering } from "./note-offering";
 import { MandateSigner } from "./mandate-signer";
 import { DelegatePanel, RepayPanel } from "./note-servicing";
+import { Agreement } from "./agreement";
 
 /**
  * The note detail screen — docs/05-web.md ("The main screen").
@@ -170,6 +171,16 @@ export function NoteView({ address }: { address: string }) {
       <section className="space-y-4">
         <SectionHead index="A" title="Provenance" />
         <Provenance note={note} />
+        {/*
+          The same agreement the admin approved, still openable by the parties
+          after the mint. A holder cannot read it — they hold a claim, not a
+          contract with the borrower — but the hash they can check is right
+          above the schedule they are owed against.
+        */}
+        <Agreement
+          documentURI={note.proposal?.documentURI}
+          documentHash={note.documentHash}
+        />
       </section>
 
       <section className="space-y-4">
@@ -388,15 +399,6 @@ function Provenance({ note }: { note: NoteDetail }) {
       )}
 
       <div className="space-y-3 border-t border-line pt-4">
-        <div>
-          <Eyebrow>Document hash</Eyebrow>
-          <p className="mt-1 font-mono text-[11px] break-all text-ink">{note.documentHash}</p>
-          <p className="mt-1 text-[12px] leading-relaxed text-muted">
-            The agreement behind this note. Hash what you were sent and compare
-            it here — if the two differ, the document you are reading is not the
-            one the admin approved.
-          </p>
-        </div>
         {p ? (
           <div>
             <Eyebrow>Approved digest</Eyebrow>

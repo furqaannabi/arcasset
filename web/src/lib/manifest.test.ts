@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { manifestHash, dedupe, rejectReason, ZERO_HASH } from "@/lib/manifest";
+import { expect, test, describe } from "bun:test";
+import { manifestHash, dedupe, draftIdFrom, rejectReason, ZERO_HASH } from "@/lib/manifest";
 import type { DocumentEntry } from "@/lib/manifest";
 import type { Hex } from "viem";
 
@@ -48,4 +48,25 @@ test("rejects oversize and wrong types", () => {
   expect(rejectReason(wrong)).toContain("not accepted");
   const ok = { size: 10, type: "application/pdf" } as File;
   expect(rejectReason(ok)).toBeNull();
+});
+
+describe("draftIdFrom", () => {
+  test("reads the id out of the key the seal route writes", () => {
+    expect(draftIdFrom("drafts/clx123abc/manifest.json")).toBe("clx123abc");
+  });
+
+  test("tolerates surrounding whitespace", () => {
+    expect(draftIdFrom("  drafts/abc/manifest.json  ")).toBe("abc");
+  });
+
+  test("is null for anything else, rather than guessing", () => {
+    // Every one of these is a real possibility: an agreement stored elsewhere,
+    // an empty URI on a note from before documents existed, a nested path.
+    expect(draftIdFrom("ipfs://Qm...")).toBeNull();
+    expect(draftIdFrom("")).toBeNull();
+    expect(draftIdFrom(null)).toBeNull();
+    expect(draftIdFrom(undefined)).toBeNull();
+    expect(draftIdFrom("drafts/a/b/manifest.json")).toBeNull();
+    expect(draftIdFrom("drafts//manifest.json")).toBeNull();
+  });
 });
