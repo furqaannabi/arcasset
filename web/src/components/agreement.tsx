@@ -8,6 +8,7 @@ import { tokenFor, useSession } from "@/lib/use-session";
 import { shortAddress } from "@/lib/format";
 import { draftIdFrom } from "@/lib/manifest";
 import { Button, Chip, Eyebrow, Panel } from "./ui";
+import { Modal } from "./modal";
 
 /**
  * The agreement behind a note, readable by the people it concerns.
@@ -54,7 +55,7 @@ export function Agreement({
   const { address } = useAccount();
   const { ensureSession } = useSession();
   const [opening, setOpening] = useState<string | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{ file: DraftFile; url: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   const draft = useQuery({
@@ -75,21 +76,14 @@ export function Agreement({
   });
 
   /**
-   * Opens a file in a new tab.
+   * Reads a file and shows it here, on this page.
    *
-   * Two steps, and neither is a plain link. The endpoint checks a bearer
-   * token, so an anchor would send an unauthenticated request and get a 403.
-   * And its default answer is a 302 to a signed R2 URL, which a browser cannot
-   * follow from a fetch — R2 serves objects with no Access-Control-Allow-Origin
-   * header, so the redirect is taken and then the response is refused:
-   *
-   *   Access to fetch at 'https://…r2…' (redirected from 'http://…/files/…')
-   *   has been blocked by CORS policy
-   *
-   * So: ask for the URL with `mode=link` and navigate to it, because a
-   * top-level navigation is not a cross-origin read. Storage that cannot sign
-   * a URL answers with null, and then the bytes come back through the API,
-   * which is same-origin and fine.
+   * The bytes come through the API rather than from the bucket. That is what
+   * makes them viewable at all — a signed R2 URL cannot be fetched
+   * cross-origin, since R2 sends no Access-Control-Allow-Origin — and it is
+   * also the only version of this that does not hand the reader a bucket URL
+   * they could keep, forward, or find still working later. A loan agreement
+   * should stop being readable when the session that opened it does.
    */
   async function open(file: DraftFile) {
     setProblem(null);
@@ -100,32 +94,19 @@ export function Agreement({
         setProblem("Sign in with a wallet named on this proposal to read it.");
         return;
       }
-      const headers = { authorization: `Bearer ${token}` };
-      const base = `${API_URL}/documents/drafts/${draftId}/files/${file.id}`;
-
-      const linked = await fetch(`${base}?mode=link`, { headers });
-      if (!linked.ok) {
+      const res = await fetch(
+        `${API_URL}/documents/drafts/${draftId}/files/${file.id}?mode=bytes`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) {
         setProblem(
-          linked.status === 403
+          res.status === 403
             ? "Only the originator, the borrower and the admin can open this."
-            : `Could not open the file — HTTP ${linked.status}`,
+            : `Could not open the file — HTTP ${res.status}`,
         );
         return;
       }
-
-      const { url } = (await linked.json()) as { url: string | null };
-      if (url) {
-        show(url, false);
-        return;
-      }
-
-      // No signer: the API streams the bytes itself, same-origin.
-      const res = await fetch(base, { headers });
-      if (!res.ok) {
-        setProblem(`Could not open the file — HTTP ${res.status}`);
-        return;
-      }
-      show(URL.createObjectURL(await res.blob()), true);
+      setViewing({ file, url: URL.createObjectURL(await res.blob()) });
     } catch (e) {
       setProblem(e instanceof Error ? e.message : "could not open the file");
     } finally {
@@ -133,22 +114,10 @@ export function Agreement({
     }
   }
 
-  /**
-   * `window.open` after an await is outside the click that started it, and
-   * some browsers treat that as a popup rather than a navigation. When it is
-   * blocked the URL is offered as a link instead of the click doing nothing
-   * visible.
-   */
-  function show(url: string, revoke: boolean) {
-    const opened = window.open(url, "_blank", "noopener");
-    if (!opened) {
-      setPending(url);
-      return;
-    }
-    // Object URLs are revoked on a delay: the new tab loads from it first, and
-    // revoking in the same tick gives a blank window. A signed R2 URL is not
-    // ours to revoke and expires on its own.
-    if (revoke) setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  /** Closing revokes the object URL, so the bytes do not sit in memory. */
+  function close() {
+    if (viewing) URL.revokeObjectURL(viewing.url);
+    setViewing(null);
   }
 
   const files = draft.data?.documents ?? [];
@@ -225,28 +194,46 @@ export function Agreement({
         </p>
       ) : null}
 
-      {pending ? (
-        <p className="text-[12px] leading-relaxed text-muted">
-          Your browser blocked the new tab.{" "}
-          <a
-            className="text-accent underline underline-offset-2"
-            href={pending}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => setPending(null)}
-          >
-            Open it manually
-          </a>{" "}
-          — the link is signed and expires in a minute.
-        </p>
-      ) : null}
-
       {problem ? (
         <p className="text-[12px] text-danger" role="alert">
           {problem}
         </p>
       ) : null}
+
+      <Modal
+        open={viewing !== null}
+        onClose={close}
+        title={viewing?.file.filename ?? ""}
+        subtitle={viewing ? `${viewing.file.contentType} · ${shortAddress(viewing.file.contentHash)}` : undefined}
+      >
+        {viewing ? <Viewer file={viewing.file} url={viewing.url} /> : null}
+      </Modal>
     </Panel>
+  );
+}
+
+/**
+ * Three accepted types, three treatments — sniffType in the backend admits
+ * PDF, PNG and JPEG and nothing else, so there is no general case to handle.
+ * The fallback exists anyway, because a type that got in before that check did
+ * should read as "cannot show this" rather than as an empty frame.
+ */
+function Viewer({ file, url }: { file: DraftFile; url: string }) {
+  if (file.contentType.startsWith("image/")) {
+    return (
+      <div className="flex justify-center bg-canvas p-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt={file.filename} className="max-w-full" />
+      </div>
+    );
+  }
+  if (file.contentType === "application/pdf") {
+    return <iframe src={url} title={file.filename} className="h-[75vh] w-full bg-canvas" />;
+  }
+  return (
+    <p className="px-4 py-10 text-center text-[13px] text-muted">
+      This page cannot display a {file.contentType}.
+    </p>
   );
 }
 

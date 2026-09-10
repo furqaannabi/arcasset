@@ -243,29 +243,38 @@ export function documentRoutes(storage: Storage, adminAddresses: string[]): Hono
     const url = await storage.signedUrl(doc.r2Key, 60);
 
     /**
-     * `?mode=link` hands back the signed URL instead of redirecting to it.
+     * `?mode=bytes` reads the object and returns it, rather than sending the
+     * caller to wherever it happens to live.
      *
-     * A browser cannot follow the redirect: R2 serves the object without an
+     * Two reasons, and the second is the better one.
+     *
+     * A browser cannot follow the redirect: R2 serves the object with no
      * Access-Control-Allow-Origin header, so a cross-origin fetch that lands
-     * there is blocked after the 302 — the request succeeds and the page is
-     * refused the response. Navigating to the URL has no such problem, since
-     * a top-level navigation is not a cross-origin read.
+     * there is refused the response after the 302 has already been taken.
      *
-     * The redirect stays the default because it is what curl, a download
-     * manager and every non-browser client want.
+     * And the app shows agreements in a modal on its own page, which means it
+     * never has to hand the reader a bucket URL — one they could keep, forward,
+     * or find still working after the session that earned it is gone. A loan
+     * agreement should stop being readable when access to it does.
+     *
+     * The redirect stays the default because it is what curl and every
+     * non-browser client want. Files are capped at MAX_FILE_BYTES and there
+     * are at most MAX_FILES of them, so this proxies a bounded amount.
      */
-    if (c.req.query("mode") === "link") {
-      return c.json({ url, filename: doc.filename, contentType: doc.contentType });
+    if (c.req.query("mode") === "bytes" || !url) {
+      const bytes = await storage.get(doc.r2Key);
+      return new Response(bytes, {
+        headers: {
+          "content-type": doc.contentType,
+          // inline, never attachment: this is being displayed, not handed over.
+          "content-disposition": `inline; filename="${doc.filename}"`,
+          // The URL is a session-scoped API path, not a cacheable asset.
+          "cache-control": "private, no-store",
+        },
+      });
     }
 
-    if (url) return c.redirect(url, 302);
-
-    // Local storage cannot mint a link, so the bytes come through the API under
-    // the same check rather than through a pretend URL.
-    const bytes = await storage.get(doc.r2Key);
-    return new Response(bytes, {
-      headers: { "content-type": doc.contentType, "content-disposition": `inline; filename="${doc.filename}"` },
-    });
+    return c.redirect(url, 302);
   });
 
   return app;
