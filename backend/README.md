@@ -89,11 +89,45 @@ mark, because a mandate left uncollected turns into a delinquency the agent
 manufactured. It does not outrank a funded period (which settles, so nothing is
 pulled twice) or a closed cure window (which defaults).
 
-**`COLLECT` is decided but not yet executed.** `decide` returns it and the
-contract is deployed at `0x81b0334115f5641dDE86D7696C52020558Ab84a5`, but the
-executor has no branch for it, mandates have nowhere to be stored, and no route
-exists for a borrower to sign one. Until that lands the agent will never see a
-mandate, so it never returns `COLLECT` in practice.
+A `COLLECT` line carries the `tx` of the pull, like any other action. The
+mandate is marked spent only after that receipt succeeds — marking it earlier
+would strand an authorisation the token would still honour.
+
+### Mandates
+
+| | |
+|---|---|
+| `POST /mandates` | Lodge a signed repayment authorisation. Session required, as the borrower |
+| `GET /mandates/:noteId` | Which periods are covered, and which are spent |
+
+A mandate is an EIP-3009 authorisation the borrower has signed and nobody has
+collected yet. It is a signature and nothing more until the agent spends it,
+which is why it lives in Postgres rather than on chain — see
+[docs/09-mandate.md](../docs/09-mandate.md).
+
+Anyone may *collect* a mandate, because the signature is the authority and
+`RepaymentMandate.collect` is permissionless. Only the borrower may **lodge**
+one, or the table becomes a place to keep other people's garbage.
+
+Every check is server-side, because the client chose none of it:
+
+- the session address must be the note's `borrower()`
+- the nonce is recomputed from `mandateNonce(noteId, periodIndex)`, never taken
+  from the request — a signature over a nonce the contract does not derive is
+  valid to the token and useless to `collect`
+- the signature must recover under the token's domain, with `to` set to
+  `RepaymentMandate` — not the vault, not the note
+- `value * 1e12` must cover `periodDue(index)`, judged against chain time
+
+```jsonc
+POST /mandates
+{ "noteId": "1", "periodIndex": 2, "value": "1010000",
+  "validAfter": "1788950000", "validBefore": "1788960000", "signature": "0x…" }
+→ 201 { "noteId": "1", "periodIndex": 2, "value": "1010000", "validBefore": "1788960000" }
+```
+
+`GET` withholds signatures from everyone but the agent. A mandate in a
+stranger's hands is a repayment they can trigger early.
 
 ### Identity
 

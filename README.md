@@ -8,15 +8,14 @@ Built from scratch at ETHOnline 2026 (Sep 4–13) by Furqaan and Apurva.
 
 ## Status
 
-Day 6 of 10. Contracts are deployed on Arc testnet; the agent services notes
-unattended; all three paid endpoints take money from a cold wallet. Automatic
-repayment is half-built: the contract and the agent's decision are done, the
-plumbing between them is not.
+Day 7 of 10. Contracts are deployed on Arc testnet; the agent services notes
+unattended and now collects repayments the borrower signed for; all three paid
+endpoints take money from a cold wallet.
 
 | | |
 |---|---|
 | `contracts/` | 8 deployed on Arc testnet, 4 verified, with a real personhood verifier. 137 tests, plus a 37-assertion run against a live node |
-| `backend/` | Agent, verification, documents, and three x402 endpoints. 74 tests and five end-to-end suites |
+| `backend/` | Agent, mandates, verification, documents, and three x402 endpoints. 80 tests and five end-to-end suites |
 | `subgraph/` | 13 entities, 22 handlers. Published at **v0.0.5**, indexing to head — but against the contracts replaced on Sep 9 |
 | `web/` | Next.js 16, seven routes. `/intel` is still a stub; everything else is live. 28 tests |
 | Specs | [docs/](docs/), eight specs plus [08 — Handoff](docs/08-handoff.md), which lists what is open in Apurva's lane |
@@ -320,10 +319,16 @@ available. It does not outrank two things: a funded period settles instead, so
 nothing is pulled twice, and a closed cure window still defaults, because past
 it the note's fate is decided and taking more money does not change it.
 
-**What is not built yet.** `decide` can return `COLLECT`; nothing carries it
-out. The executor has no branch that sends `collect`, mandates have nowhere to
-be stored, there is no route for a borrower to sign them, and the loop does not
-fetch one. Until those land, repayment is push-only and the borrower sends it.
+**End to end.** The borrower authorises every remaining period from the note
+page — one signature each, no gas. The backend refuses anything it did not
+check itself: that the session address is the note's borrower, that the nonce
+matches what the contract derives, that the signature recovers under the
+token's own domain naming `RepaymentMandate` as `to`, and that the value covers
+`periodDue`. The agent reads what is lodged, collects when a period falls short,
+and marks the mandate spent only after the receipt.
+
+Manual repayment still works and is still the fallback. A borrower who signs
+nothing is exactly where they were: the agent waits, then marks the period late.
 
 ## Running it
 

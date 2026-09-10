@@ -251,3 +251,34 @@ for you: if we demo at device level, we set it explicitly and the weakening is
 deliberate and visible rather than implicit. What it does mean is that the
 README sentence has to change, or the level does. That is a product call, not
 a code one.
+
+---
+
+## Landed — Sep 10
+
+Sections 1–4 are built; `25122fc` closed the loop.
+
+- **Storage** — the `Mandate` model, at the composite key you specified. The
+  table already existed on the shared database from a migration that was never
+  committed; it matched this model exactly, so the migration file was
+  reconstructed at its existing name rather than reset. **Commit migrations** —
+  a fresh clone right now gets a schema the database does not match.
+- **`POST /mandates`** — all four checks, server-side. `GET /mandates/:noteId`
+  withholds signatures from everyone but the agent.
+- **`source.ts`** — unspent mandates per note, behind `NoteSource`.
+- **`executor.ts`** — `collect`, with the `v < 27` normalisation. `collectedTx`
+  is written after the receipt and only on success.
+- **`decide()`** got its fourth argument, in the same commit as the branch that
+  receives it.
+
+The test worth knowing about is the pair: same note, same clock, same missed
+period. Without a mandate the agent marks it delinquent; with one it collects
+and marks nothing.
+
+**The frontend exists too** — `MandateSigner`, section D of the note page,
+borrower only. It signs every remaining period in one pass, reads the nonce
+from the contract rather than from the API, and keeps partial progress when a
+prompt is declined. Built against your spec; change it freely, it is your lane.
+
+Still open from this doc: the verification-level question above, which is a
+product call and still needs one.
