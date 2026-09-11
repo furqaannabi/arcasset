@@ -68,35 +68,19 @@ Sybil issuance makes all three worse. An anonymous issuer can abandon a defaulte
 
 ## How it works
 
-```text
-Originator and borrower verify      → PartyRegistry records a nullifier each
-        ↓
-Originator proposes terms + agreement → IssuanceQueue: Proposed
-        ↓
-Borrower accepts from their own key → Accepted
-        ↓                               (no answer by the deadline → Expired)
-Admin reads the agreement, approves → Approved  (or Rejected, with a reason)
-        ↓
-Originator mints, digest re-checked → NoteFactory deploys it, status Active
-        ↓                               originator holds 100% of supply
-Originator lists a slice for sale   → Offering escrows it, priced in bps of par
-        ↓                               unsold tokens come back on demand
-Buyers buy                          → tokens out, proceeds to the originator
-        ↓
-   ┌──────────────────── per period, unattended ────────────────────┐
-   │  Borrower repays into RepaymentVault                           │
-   │  Agent reads the subgraph and classifies the period            │
-   │    paid in full          → settle, distribute, take the fee    │
-   │    short, inside grace   → wait                                │
-   │    short, past grace     → mark delinquent                     │
-   │  Holders claim their share                                     │
-   │  Every action emits an event → subgraph → paid API             │
-   └────────────────────────────────────────────────────────────────┘
-        ↓
-Final period settled                → Matured   (or Defaulted)
-```
+![ArcAsset end-to-end flow: sign up, World Selfie verification, create loan, borrower accepts, admin review, mint, investors buy, repayments, servicing agent, on-chain record, paid data API — over an architecture of users, the application, the off-chain data layer, and Arc testnet](assets/flow.png)
 
-### Five parties, kept apart
+Read the top band left to right for what a person does. Below it: who the
+parties are, what the application exposes to each of them, what is kept
+off-chain and why, and which of it ends up on Arc.
+
+Two things the picture flattens. **Repayment can be automatic** — the borrower
+signs one single-use authorisation per period up front and the agent collects
+each as it falls due, so "borrower repays" is not always a thing they do by
+hand. And a period the agent judges short can still be **cured** by the
+originator inside the cure window, which is the row the paid API sells.
+
+### Six parties, kept apart
 
 | | |
 |---|---|
