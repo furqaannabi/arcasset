@@ -78,12 +78,24 @@ v2 is `/{app_id}`, v4 is `/{rp_id}`. Passing an `app_…` where an `rp_…` belo
 yields `unknown_rp`, which does not mention that the thing you passed *is* a
 valid identifier of a different kind.
 
-**RP registration is undocumented in the integration path.** `rp_context`
-requires an `rp_id` and a signing key. We could not find a page explaining what
-a relying party is, how to register one, or where the signing key comes from —
-we learned the shape by reading `@worldcoin/idkit-server`'s type definitions.
-For an integration where **nothing works at all** without it, this deserves its
-own page ahead of the code samples.
+**RP registration is one sentence for something nothing works without.** The
+integration page says to keep `app_id`, `rp_id` and `signing_key`, and that
+migrating apps "complete RP registration by clicking the Enable World ID 4.0
+banner". That is the entire treatment of the step that gates every other step.
+There is no page explaining what a relying party is, what the registry does,
+whether the key can be re-shown or only rotated, or what happens to an existing
+`rp_id` if you rotate. We learned the signing contract by reading
+`@worldcoin/idkit-server`'s type definitions.
+
+**The three values are easy to confuse and only one is secret.** `app_id`,
+`rp_id` and `signing_key` are handed over together in a list. Two are public
+identifiers with readable prefixes; the third is a 32-byte secret with no
+prefix at all. We pasted an address into ours, and the resulting failure was
+`invalid_rp_signature` from inside World App — a runtime error, during a
+verification, in front of a user. The SDK's own message ("expected 32 bytes,
+got 20") is excellent and arrives far too late. A portal that labelled the
+field as a secret, and docs that said plainly "this is not an address and not
+the rp_ id", would have cost us nothing to read.
 
 **`allow_legacy_proofs` is load-bearing for Selfie Check and easy to miss.**
 `selfieCheckLegacy` produces a 3.0 proof, so a request without
