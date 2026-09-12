@@ -31,10 +31,10 @@ bunx graph auth <deploy-key>              # from thegraph.com/studio
 bun run deploy:studio                     # prompts for a version label
 ```
 
-Deployed and indexing as of v0.0.1:
+Deployed and indexing at v0.0.9:
 
 ```
-https://api.studio.thegraph.com/query/1758626/arcasset/v0.0.3
+https://api.studio.thegraph.com/query/1758626/arcasset/v0.0.9
 ```
 
 That is Studio's development endpoint — free, rate-limited, no API key needed.

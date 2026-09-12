@@ -369,7 +369,7 @@ Everything is read once at startup and validated loudly. See `.env.example`.
 ## Tests
 
 ```bash
-bun test                        # 66 unit tests
+bun test                        # 82 unit tests
 bun run typecheck
 
 ./script/agent-e2e.sh           # the agent services a note unattended

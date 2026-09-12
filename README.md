@@ -14,12 +14,12 @@ endpoints take money from a cold wallet.
 
 | | |
 |---|---|
-| `contracts/` | 8 deployed on Arc testnet, 4 verified, with a real personhood verifier. 137 tests, plus a 37-assertion run against a live node |
-| `backend/` | Agent, mandates, verification, documents, and three x402 endpoints. 80 tests and five end-to-end suites |
-| `subgraph/` | 13 entities, 22 handlers. Published at **v0.0.7**, indexing to head against the current contract set |
-| `web/` | Next.js 16, eight routes, all live — including the `/intel` storefront. 31 tests |
+| `contracts/` | 8 deployed on Arc testnet, 7 verified, with a real personhood verifier. 147 tests, plus a 37-assertion run against a live node |
+| `backend/` | Agent, mandates, verification, documents, and three x402 endpoints. 82 tests and five end-to-end suites |
+| `subgraph/` | 14 entities, 24 handlers. Published at **v0.0.9**, indexing to head against the current contract set |
+| `web/` | Next.js 16, eight routes, all live — including the `/intel` storefront. 44 tests |
 
-**The subgraph is live and correct.** `v0.0.7` indexes the current contract set
+**The subgraph is live and correct.** `v0.0.9` indexes the current contract set
 to chain head with no indexing errors, and it is what `/proposals`,
 `/note/[address]` and the agent console read.
 
@@ -218,11 +218,9 @@ vault, neither reads it back, and `RepaymentVault.repay` is permissionless. So
 the new one starts working and the old one stops being used.
 `contracts/script/deploy-mandate.sh` is the script that does only that.
 
-Four are **verified on Blockscout**; `Offering`, `RepaymentVault`,
-`ServicingRelay` and `RepaymentMandate` are not, because Blockscout rate-limits
-verification submissions and retries have not yet cleared. Source is in the
-repo and the bytecode is reproducible with the pinned toolchain in either
-case.
+Seven are **verified on Blockscout**. `Offering` is not: Blockscout rate-limits
+verification submissions, and that one has not yet cleared a retry. Its source
+is in the repo and its bytecode is reproducible with the pinned toolchain.
 
 | Contract | Address | |
 |---|---|---|
@@ -354,7 +352,7 @@ on missing imports rather than on anything you did.
 ```bash
 cd contracts
 forge build
-forge test                      # 126 tests
+forge test                      # 147 tests
 ./script/e2e.sh                 # 37 assertions against a live Anvil node
 ```
 
@@ -410,7 +408,7 @@ cd web
 cp .env.example .env.local
 bun install
 bun run dev                     # :3000
-bun test                        # 28 tests, mostly over money formatting
+bun test                        # 44 tests, mostly over money formatting
 ```
 
 `NEXT_PUBLIC_SUBGRAPH_URL` points at Studio. Until the subgraph is redeployed
