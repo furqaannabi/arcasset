@@ -8,7 +8,7 @@ Built from scratch at ETHOnline 2026 (Sep 4–13) by Furqaan and Apurva.
 
 ## Status
 
-Day 7 of 10. Contracts are deployed on Arc testnet; the agent services notes
+Contracts are deployed on Arc testnet; the agent services notes
 unattended and now collects repayments the borrower signed for; all three paid
 endpoints take money from a cold wallet.
 
