@@ -3,10 +3,8 @@
 The Graph, indexing `PartyRegistry`, `IssuanceQueue`, `NoteFactory`, `Offering`,
 `RepaymentVault` and `ServicingRelay` on Arc testnet, plus every `RWANote` as a
 dynamic data source instantiated at mint. This is the read layer for the
-servicing agent, the web UI, and `/intel/*` — see
-[docs/03-subgraph.md](../docs/03-subgraph.md) for the schema design and
-[docs/01-architecture.md](../docs/01-architecture.md) for why nothing else
-reads the chain directly for data this indexes.
+servicing agent, the web UI, and `/intel/*`: nothing else should read the chain
+directly for data indexed here, or there are two sources of truth that drift.
 
 ## Running it
 
@@ -103,5 +101,5 @@ is the fastest way to stand one up locally when needed.
   them in — cheap next to indexing every period by hand, and it only happens
   once per note, not per event.
 
-This file and [docs/03-subgraph.md](../docs/03-subgraph.md) describe the same
-system; if a mapping changes what it indexes, update both in the same commit.
+`schema.graphql` is the contract this file describes; if a mapping changes what
+it indexes, update both in the same commit.

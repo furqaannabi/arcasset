@@ -16,26 +16,25 @@ endpoints take money from a cold wallet.
 |---|---|
 | `contracts/` | 8 deployed on Arc testnet, 4 verified, with a real personhood verifier. 137 tests, plus a 37-assertion run against a live node |
 | `backend/` | Agent, mandates, verification, documents, and three x402 endpoints. 80 tests and five end-to-end suites |
-| `subgraph/` | 13 entities, 22 handlers. Published at **v0.0.5**, indexing to head — but against the contracts replaced on Sep 9 |
-| `web/` | Next.js 16, seven routes. `/intel` is still a stub; everything else is live. 28 tests |
-| Specs | [docs/](docs/), eight specs plus [08 — Handoff](docs/08-handoff.md), which lists what is open in Apurva's lane |
+| `subgraph/` | 13 entities, 22 handlers. Published at **v0.0.7**, indexing to head against the current contract set |
+| `web/` | Next.js 16, eight routes, all live — including the `/intel` storefront. 31 tests |
 
-**The subgraph indexes cleanly and points at the wrong contracts.** The Sep 9
-redeploy moved every address, and the published `v0.0.5` still indexes the
-Sep 7 set — it answers queries, reports `hasIndexingErrors: false`, and returns
-a world that no longer exists. The manifest in this repo is already synced;
-publishing it needs a Studio key. `web/.env` is also still pinned to `v0.0.4`,
-a version behind what is published.
+**The subgraph is live and correct.** `v0.0.7` indexes the current contract set
+to chain head with no indexing errors, and it is what `/proposals`,
+`/note/[address]` and the agent console read.
 
-That failure mode — healthy and wrong — has now happened twice, which is why
-`bun run deploy:studio` refuses to publish when the manifest and
-`contracts/deployments/<chainId>.json` disagree. Both earlier instances are
-worth knowing about, because neither announced itself:
+Getting there took three failures of the same shape — *healthy and wrong* —
+which is why `bun run deploy:studio` now refuses to publish when the manifest
+and `contracts/deployments/<chainId>.json` disagree. None of them announced
+itself:
 
-- The published manifest pointed at the pre-verifier-swap addresses. Studio
-  reported healthy and returned an empty world. Addresses now derive from
-  `contracts/deployments/<chainId>.json` and `bun run deploy:studio` refuses to
-  publish if the two disagree.
+- The Sep 9 redeploy moved every address, and the published version kept
+  indexing the replaced set: still answering queries, still reporting
+  `hasIndexingErrors: false`, still returning a world that no longer existed.
+- Before that, the published manifest pointed at the pre-verifier-swap
+  addresses. Studio reported healthy and returned an empty world. Addresses now
+  derive from `contracts/deployments/<chainId>.json` rather than being typed in
+  twice.
 - `handleNoteIssued` binds the note contract to read three `Terms` fields the
   event does not carry, and the `RWANote` ABI was declared only on the
   template. A mapping may bind only ABIs listed on its own data source, so the
@@ -69,35 +68,19 @@ Sybil issuance makes all three worse. An anonymous issuer can abandon a defaulte
 
 ## How it works
 
-```text
-Originator and borrower verify      → PartyRegistry records a nullifier each
-        ↓
-Originator proposes terms + agreement → IssuanceQueue: Proposed
-        ↓
-Borrower accepts from their own key → Accepted
-        ↓                               (no answer by the deadline → Expired)
-Admin reads the agreement, approves → Approved  (or Rejected, with a reason)
-        ↓
-Originator mints, digest re-checked → NoteFactory deploys it, status Active
-        ↓                               originator holds 100% of supply
-Originator lists a slice for sale   → Offering escrows it, priced in bps of par
-        ↓                               unsold tokens come back on demand
-Buyers buy                          → tokens out, proceeds to the originator
-        ↓
-   ┌──────────────────── per period, unattended ────────────────────┐
-   │  Borrower repays into RepaymentVault                           │
-   │  Agent reads the subgraph and classifies the period            │
-   │    paid in full          → settle, distribute, take the fee    │
-   │    short, inside grace   → wait                                │
-   │    short, past grace     → mark delinquent                     │
-   │  Holders claim their share                                     │
-   │  Every action emits an event → subgraph → paid API             │
-   └────────────────────────────────────────────────────────────────┘
-        ↓
-Final period settled                → Matured   (or Defaulted)
-```
+![ArcAsset end-to-end flow: sign up, World Selfie verification, create loan, borrower accepts, admin review, mint, investors buy, repayments, servicing agent, on-chain record, paid data API — over an architecture of users, the application, the off-chain data layer, and Arc testnet](assets/flow.png)
 
-### Five parties, kept apart
+Read the top band left to right for what a person does. Below it: who the
+parties are, what the application exposes to each of them, what is kept
+off-chain and why, and which of it ends up on Arc.
+
+Two things the picture flattens. **Repayment can be automatic** — the borrower
+signs one single-use authorisation per period up front and the agent collects
+each as it falls due, so "borrower repays" is not always a thing they do by
+hand. And a period the agent judges short can still be **cured** by the
+originator inside the cure window, which is the row the paid API sells.
+
+### Six parties, kept apart
 
 | | |
 |---|---|
@@ -217,7 +200,6 @@ backend/     Bun + Hono · Prisma over Postgres · Cloudflare R2 — everything
              the servicing agent, document upload, and the paid /intel/* API
 subgraph/    The Graph — notes, periods, repayments, delinquency, servicing actions
 web/         Next.js — propose, proposal review, note detail, agent console, intelligence storefront
-docs/        The specs. Read the relevant one before changing an interface
 ```
 
 Money is `bigint` integer arithmetic from the contract to the render call, and display truncates rather than rounds so a balance never shows as more than is owed. At 18 decimals a single USDC exceeds `2^53`, so a `Number` anywhere in a money path is a correctness bug rather than a rounding one.
@@ -463,9 +445,6 @@ decimals and is what every contract uses. The ERC-20 at
 and is what x402, wallets and explorers use. `balanceOf` there is exactly the
 native balance divided by 1e12 — same money, two scales. Mixing them is a factor
 of a trillion.
-
-More of these, all found the hard way, in
-[docs/04-backend.md](docs/04-backend.md#things-about-arcs-usdc-that-cost-a-day).
 
 ## Rules
 

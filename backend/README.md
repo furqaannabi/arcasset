@@ -8,8 +8,8 @@ Bun + Hono, Prisma over Postgres, R2 for files. One process, three concerns:
 | **`/documents/*`** | Agreement upload, sealing, and access-controlled review |
 | **`/intel/*`** | The paid API, priced per query and settled with x402 |
 
-Design and reasoning live in [docs/04-backend.md](../docs/04-backend.md). This
-file is the interface.
+This file is the interface. The reasoning behind each choice is in the comments
+at the top of the module that makes it.
 
 ## Running it
 
@@ -102,8 +102,7 @@ would strand an authorisation the token would still honour.
 
 A mandate is an EIP-3009 authorisation the borrower has signed and nobody has
 collected yet. It is a signature and nothing more until the agent spends it,
-which is why it lives in Postgres rather than on chain — see
-[docs/09-mandate.md](../docs/09-mandate.md).
+which is why it lives in Postgres rather than on chain.
 
 Anyone may *collect* a mandate, because the signature is the authority and
 `RepaymentMandate.collect` is permissionless. Only the borrower may **lodge**
@@ -133,8 +132,8 @@ stranger's hands is a repayment they can trigger early.
 
 Selfie Check has no on-chain proof artifact, so the backend verifies with
 World's cloud API and signs an attestation the contract can check. What that
-costs is in [docs/06-identity.md](../docs/06-identity.md); the short version is
-that the chain stops proving personhood and starts proving *this server said so*.
+costs: the chain stops proving personhood and starts proving *this server said
+so*. If the attestor key leaks, anyone can mint verifications for any address.
 
 | | |
 |---|---|
