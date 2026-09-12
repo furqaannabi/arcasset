@@ -22,7 +22,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "7.10.0",
-    "@worldcoin/idkit-core": "2.1.0",
+    "@worldcoin/idkit-core": "4.2.4",
     "hono": "^4.13.7",
     "pg": "^8.23.0",
     "viem": "^2.56.3"
