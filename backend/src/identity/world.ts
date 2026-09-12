@@ -41,6 +41,14 @@ export type WorldConfig = {
   baseUrl?: string;
 };
 
+/** WORLD_RP_SIGNING_KEY is set but is not a key. Configuration, not a request. */
+export class BadSigningKey extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "BadSigningKey";
+  }
+}
+
 /** What the browser needs to open a request. Everything here is public. */
 export type RpContext = {
   rp_id: string;
@@ -100,11 +108,26 @@ export function isWorldProof(v: unknown): v is WorldProof {
  */
 export function rpContext(config: WorldConfig, ttlSeconds = 300): RpContext | null {
   if (!config.signingKey) return null;
-  const signed = signRequest({
-    signingKeyHex: config.signingKey,
-    action: config.action,
-    ttl: ttlSeconds,
-  });
+
+  /**
+   * A wrong key throws rather than returning, and the thrown message is the
+   * useful one — "expected 32 bytes, got 20" says immediately that somebody
+   * pasted an address where a private key belongs, which is the easy mistake
+   * here because every other World identifier in the config is public.
+   * Rethrown as a typed failure so the route answers 503 with that sentence
+   * instead of a stack trace.
+   */
+  let signed: ReturnType<typeof signRequest>;
+  try {
+    signed = signRequest({
+      signingKeyHex: config.signingKey,
+      action: config.action,
+      ttl: ttlSeconds,
+    });
+  } catch (err) {
+    throw new BadSigningKey(err instanceof Error ? err.message : String(err));
+  }
+
   return {
     rp_id: config.rpId,
     nonce: signed.nonce,

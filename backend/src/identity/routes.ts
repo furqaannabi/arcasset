@@ -3,7 +3,7 @@ import { isAddress, keccak256, encodePacked } from "viem";
 import type { Address, Hex, PublicClient } from "viem";
 import { addressForToken } from "@/auth/session";
 import { signAttestation, domainSeparator, nullifierToBytes32 } from "./attest";
-import { isWorldProof, verifyWithWorld, rpContext, credentialName, SCHEMA_SELFIE } from "./world";
+import { isWorldProof, verifyWithWorld, rpContext, credentialName, BadSigningKey, SCHEMA_SELFIE } from "./world";
 import type { WorldConfig } from "./world";
 
 const verifierAbi = [
@@ -53,7 +53,7 @@ export function identityRoutes(opts: IdentityOptions): Hono {
             rpId: opts.world.rpId,
             // A missing signing key is silent until the first verification
             // fails with invalid_rp_signature, so it is reported here instead.
-            requestSigning: opts.world.signingKey ? "configured" : "MISSING — proof requests cannot be signed",
+            requestSigning: signingKeyState(opts.world),
             environments: opts.world.environments,
             credential: credentialName(SCHEMA_SELFIE),
           }
@@ -83,7 +83,23 @@ export function identityRoutes(opts: IdentityOptions): Hono {
         503,
       );
     }
-    const context = rpContext(opts.world);
+    let context;
+    try {
+      context = rpContext(opts.world);
+    } catch (err) {
+      if (!(err instanceof BadSigningKey)) throw err;
+      // The signing key is the one World value that is secret, and every other
+      // identifier nearby is public — so an address or an rp_ id ends up here
+      // often enough to be worth naming rather than logging a stack trace.
+      console.error(`[identity] WORLD_RP_SIGNING_KEY is not usable: ${err.message}`);
+      return c.json(
+        {
+          error: "unavailable",
+          message: `WORLD_RP_SIGNING_KEY is set but is not a signing key — ${err.message}. It is a 32-byte secret from the Developer Portal, not an address and not the rp_ id.`,
+        },
+        503,
+      );
+    }
     if (!context) {
       return c.json(
         {
@@ -219,4 +235,20 @@ export function identityRoutes(opts: IdentityOptions): Hono {
   });
 
   return app;
+}
+
+/**
+ * Whether proof requests can actually be signed — tried, not assumed. A key
+ * that is present and wrong looks identical to a working one in every field
+ * except this, and the difference only otherwise surfaces inside World App as
+ * invalid_rp_signature.
+ */
+function signingKeyState(world: WorldConfig): string {
+  if (!world.signingKey) return "MISSING — proof requests cannot be signed";
+  try {
+    rpContext(world);
+    return "configured";
+  } catch (err) {
+    return `INVALID — ${err instanceof Error ? err.message : String(err)}`;
+  }
 }
