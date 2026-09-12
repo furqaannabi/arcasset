@@ -1,31 +1,88 @@
-# 07 — Identity
+# 06 — Identity
 
-**Status: Spec — resolved Sep 7. On-chain proof verification is not possible on
-Arc, exactly as [the constraint](#the-on-chain-check-we-assumed-does-not-exist)
-describes. The attested path was taken, is deployed, and is
-[exercised on the live chain](#resolution-attested-verification-is-live).**
+**Status: Spec — reworked Sep 12 when the credential changed. World ID Selfie
+Check gates both write-side roles. Holding stays open to anyone.**
 
-World Selfie Check gates both write-side roles — originating and borrowing.
-Holding stays open to anyone.
+## What Selfie Check actually proves, and what it does not
+
+This section is first because everything below depends on it, and because an
+earlier version of this document got it wrong.
+
+Selfie Check is a **medium-assurance** credential. It proves:
+
+- a **live human** completed a face scan, now — liveness, not a photograph
+- a **returning human matches** the face enrolled before — continuity
+
+It does **not** prove uniqueness. World's own documentation is explicit that it
+"does not provide a strict one-person-one-account guarantee" and that it
+returns "a proof of the completed check, not a numeric Sybil or uniqueness
+score". It also **expires**: 90 days of inactivity and the human has to do it
+again.
+
+That is a weaker claim than Orb, and it is the right one to build on here
+anyway. The reasoning is below.
 
 ## What it is for
 
 Repayment history is only worth buying if it attaches to something an issuer
 cannot cheaply abandon. Without an identity anchor, an issuer defaults, walks
-away, and reappears at a fresh address with a clean record — and the intel
-product is worthless, because past behaviour predicts nothing about a
+away, reappears at a fresh address with a clean record — and the intel product
+is worthless, because past behaviour predicts nothing about a
 one-transaction-old address.
 
-Selfie Check gives us a proof of live human, reducible to a nullifier that is
-unique per person per app. One human, one on-chain identity.
+Selfie Check raises the **cost** of that. Every fresh identity now needs a
+distinct living face in front of a camera, and a face already enrolled will be
+recognised as the same person returning. It does not make sybil issuance
+impossible; it makes it manual, slow, and physically embodied, which is a
+different economic proposition from generating a keypair.
 
-Because a nullifier maps to exactly one address and an address to exactly one
-nullifier, **two distinct verified addresses are necessarily two distinct
-humans.** That property is doing more work here than anywhere else in the
-system: it is what stops an originator from minting a note against an address
-they control, accepting it themselves, paying themselves on time, and selling
-the resulting spotless record. Verification of the borrower is not politeness —
-it is what makes the dataset mean anything.
+### The claim we make, stated exactly
+
+> A verified address belongs to a live human who completed a face check, and
+> that human's face was not already enrolled against a different address in
+> this registry.
+
+Note what is absent: *"therefore two verified addresses are two humans."* We
+cannot say that, because a determined person can present a second face — their
+own under different conditions, or another person's. What we can say is that
+doing so costs them a live human being each time.
+
+**The previous version of this spec claimed the stronger property.** It said
+two distinct verified addresses are *necessarily* two distinct humans, and
+built the argument for the whole intel product on that. With an Orb credential
+that claim holds. With Selfie Check it does not, and continuing to make it
+would have been the most dishonest sentence in the repository.
+
+### Why the weaker credential is still the right choice
+
+Orb verifies uniqueness and cannot be completed on demand — too few people are
+Orb-verified for anyone to originate a loan this afternoon, which makes it
+useless as a gate on a product nobody has used yet. A gate nobody can pass is
+not a gate; it is a closed door.
+
+Selfie Check can be completed by anyone with a phone, in under a minute, and
+still costs an attacker a real face per identity. For a system whose sybil
+exposure is "someone fabricates a borrower to manufacture a clean repayment
+record", that is a proportionate defence — especially alongside the two
+non-biometric checks that do not depend on the credential at all:
+
+- the borrower must **accept from their own key**, so the originator cannot act
+  for them
+- an **admin reads the agreement** before anything mints, so a fabricated loan
+  has to survive a human reading it
+
+The credential is one of three gates, and it is the one that is cheapest to
+attack. Designing as though it were the only one would be the mistake.
+
+### What this changes downstream
+
+`/intel/*` sells repayment behaviour. A buyer is entitled to know how strongly
+the identity behind a record is anchored, so the attestation records **which
+credential answered** — schema 11 for Selfie Check, 1 for Orb proof-of-human —
+and the scorecard reports it rather than flattening every verified party into
+"verified". A record anchored to an Orb credential is worth more than one
+anchored to a Selfie Check, and the product should say so instead of pretending
+they are the same.
 
 ## What it is deliberately **not** for
 
@@ -203,7 +260,7 @@ The nullifier is the whole mechanism. Rules:
 
 | Attack | Defence | Residual risk |
 |---|---|---|
-| Sybil issuers, many addresses | One nullifier per address, no reassignment | Real; buying verified accounts |
+| Sybil issuers, many addresses | One nullifier per address, no reassignment — and a nullifier costs a live face | **Real, and larger than under Orb.** Selfie Check is not a uniqueness proof: a determined attacker can present another living person. Mitigated by cost and by the two non-biometric gates, not eliminated |
 | Originator invents a borrower to fabricate a clean record | Borrower must be separately verified, must accept from their own key, and cannot be the originator | A colluding pair of real humans can still do this. Unmitigated, and worth saying |
 | Originator quietly pays their borrower's misses to flatter the book | Not prevented — it is legitimate. Instead it is *measured*: the vault records the payer, and `selfCureRate` is published | None; disclosure is the defence |
 | Default then re-issue clean | Nullifier persists across notes; history follows the issuer | An issuer can still stop using the address, but cannot get a *clean* one |

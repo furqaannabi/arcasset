@@ -9,13 +9,21 @@ import {IPersonhoodVerifier} from "./interfaces/IPersonhoodVerifier.sol";
 /// mints a note and the borrower who owes on it — are verified here. Buying is
 /// permissionless and never touches this contract.
 ///
-/// @dev The single property everything else leans on: a nullifier maps to
-/// exactly one address and an address to exactly one nullifier, so **two
-/// distinct verified addresses are necessarily two distinct humans**. That is
-/// what stops an originator inventing a borrower, accepting on their behalf,
-/// and manufacturing a flawless repayment record to sell. Downstream contracts
-/// therefore only check `borrower != originator` and that both are verified;
-/// they never reason about nullifiers.
+/// @dev The property everything else leans on: a nullifier maps to exactly one
+/// address and an address to exactly one nullifier. A human already verified
+/// here cannot claim a second address, and a verified address cannot be
+/// re-pointed at another human. Downstream contracts therefore only check
+/// `borrower != originator` and that both are verified; they never reason
+/// about nullifiers.
+///
+/// How strong that is depends on the credential behind the nullifier, and this
+/// contract deliberately does not know which one answered — it trusts an
+/// `IPersonhoodVerifier` and stores what it returns. Under an Orb credential
+/// two verified addresses are necessarily two humans. Under World's Selfie
+/// Check they are not: that credential proves liveness and continuity, not
+/// uniqueness, so a second identity costs a second living face rather than
+/// being impossible. docs/06-identity.md carries the full argument and the two
+/// non-biometric gates that do not depend on the credential.
 contract PartyRegistry is Ownable {
     IPersonhoodVerifier public immutable verifier;
 

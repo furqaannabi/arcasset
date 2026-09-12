@@ -20,11 +20,11 @@ runs the other way.
 | 03 | [Subgraph](03-subgraph.md) | Entities, derived fields, handlers |
 | 04 | [Backend](04-backend.md) | Servicing agent, documents, Postgres, R2, auth, paid `/intel/*` |
 | 05 | [Web](05-web.md) | Screens, states, empty and error cases |
-| 06 | [Identity](06-identity.md) | World Selfie Check, eligibility, abuse model |
+| 06 | [Identity](06-identity.md) | What Selfie Check proves and what it does not, eligibility, abuse model |
 | 07 | [Milestones](07-milestones.md) | Day-by-day plan, demo script, cut lines |
 | 08 | [Handoff](08-handoff.md) | Open work in Apurva's lane — subgraph, frontend, what the redeploy moved |
-| 09 | [Mandate](09-mandate.md) | What automatic repayment still needs, and the thread between both lanes |
-| 09 | [Automatic repayment](09-mandate.md) | Open work in Furqaan's lane — what the mandate needs before the signing UI can exist |
+| 09 | [Automatic repayment](09-mandate.md) | Signed mandates: storage, lodging, collection, and the signing UI |
+| 10 | [World feedback](10-world-feedback.md) | Selfie Check integration report — docs, portal, sandbox, what cost us time |
 
 ## Status legend
 

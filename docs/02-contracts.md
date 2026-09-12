@@ -63,13 +63,20 @@ event PartyRevoked(address indexed party, uint64 timestamp);
 - `revoke` blocks *new* issuance and *new* acceptance. It never touches notes
   already outstanding — existing holders' claims survive.
 
-**One nullifier per address, and one address per nullifier, together give us
-something we get for free and should not waste: two distinct verified addresses
-are necessarily two distinct humans.** That is the entire defence against an
-originator inventing a borrower, accepting on their behalf, and manufacturing a
-flawless repayment record to sell. `NoteFactory` therefore only has to check
+**One nullifier per address, and one address per nullifier: a human already
+verified here cannot claim a second address, and a verified address cannot be
+re-pointed at a different human.** `NoteFactory` therefore only has to check
 that `borrower != msg.sender` and that both are verified; it does not need to
 reason about nullifiers itself.
+
+How much that is worth depends on the credential behind it, and the registry
+deliberately does not know which one that was — it holds a nullifier from an
+`IPersonhoodVerifier` and nothing more. Under an Orb credential the property is
+absolute: two verified addresses are two humans. Under Selfie Check it is not,
+because Selfie Check is not a uniqueness proof — it makes a second identity
+cost a second living face rather than making it impossible. See
+[06](06-identity.md) for what that changes and for the two non-biometric gates
+that do not depend on the credential at all.
 
 There is no role grant here. Any verified human may originate and any verified
 human may borrow — the registry answers "is this a distinct person", and nothing
