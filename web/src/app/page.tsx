@@ -4,6 +4,7 @@ import { StackStrip, StackBadge } from "@/components/stack";
 import { Lifecycle } from "@/components/lifecycle";
 import { AgentLog } from "@/components/agent-log";
 import { IntelPreview } from "@/components/intel-preview";
+import { ProtocolRecord } from "@/components/protocol-record";
 import { CHAIN } from "@/lib/chain";
 
 const CONSUMERS = [
@@ -50,6 +51,16 @@ export default function Home() {
             distributes and marks delinquency on its own — and every period it
             settles becomes repayment history somebody will pay to read.
           </p>
+          {/*
+            The page has to earn the headline, and the only way to do that is
+            to stop describing and start showing. Everything below this line is
+            read from the chain at load; nothing on it is illustrative.
+          */}
+          <p className="max-w-xl text-[13px] leading-relaxed text-faint">
+            Everything on this page is live. The log beside it, the record
+            below it and the prices further down are read from Arc and from the
+            index — there are no mockups here.
+          </p>
           <div className="flex flex-wrap items-center gap-3 pt-1">
             <Link href="/propose">
               <Button tone="primary">Propose a note</Button>
@@ -63,11 +74,31 @@ export default function Home() {
         <AgentLog />
       </section>
 
+      {/*
+        Evidence before argument. A reader who goes no further than this
+        section has seen the claim tested: an agent settled these periods,
+        flagged these two, and carried these notes to maturity with nobody
+        watching.
+      */}
+      <section className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-3">
+          <div className="max-w-xl space-y-2">
+            <Eyebrow>01 / The record</Eyebrow>
+            <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
+              This already happened, without anyone watching.
+            </h2>
+          </div>
+          <StackBadge sponsor="graph" role="every figure, read live" />
+        </div>
+
+        <ProtocolRecord />
+      </section>
+
       {/* The three-signature gate */}
       <section className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-3">
           <div className="max-w-xl space-y-2">
-            <Eyebrow>01 / Issuance</Eyebrow>
+            <Eyebrow>02 / Issuance</Eyebrow>
             <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
               Nothing mints until three people say yes.
             </h2>
@@ -91,7 +122,7 @@ export default function Home() {
       <section className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-3">
           <div className="max-w-xl space-y-2">
-            <Eyebrow>02 / Read path</Eyebrow>
+            <Eyebrow>03 / Read path</Eyebrow>
             <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
               One index, three consumers.
             </h2>
@@ -118,7 +149,7 @@ export default function Home() {
       {/* The data product, shown rather than described */}
       <section className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,480px)]">
         <div className="space-y-5">
-          <Eyebrow>03 / The asset</Eyebrow>
+          <Eyebrow>04 / The asset</Eyebrow>
           <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
             Repayment history, priced per query.
           </h2>
@@ -149,7 +180,7 @@ export default function Home() {
       {/* Honest boundaries */}
       <section className="space-y-6">
         <div className="border-b border-line pb-3">
-          <Eyebrow>04 / Boundaries</Eyebrow>
+          <Eyebrow>05 / Boundaries</Eyebrow>
           <h2 className="mt-2 text-[26px] leading-tight font-medium tracking-tight">
             What this is not.
           </h2>
