@@ -382,6 +382,43 @@ export const servicingRelayAbi = [
  */
 export const repaymentMandateAbi = [
   {
+    /**
+     * One EIP-2612 permit standing in for every per-period signature. The
+     * allowance is a ceiling; when and how much of it moves is decided by the
+     * note's schedule on-chain, not here and not by whoever relays this.
+     */
+    type: "function",
+    name: "authorize",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "value", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+      { name: "v", type: "uint8" },
+      { name: "r", type: "bytes32" },
+      { name: "s", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    /** What a standing authorisation still has to cover, in 6-decimal units. */
+    type: "function",
+    name: "outstanding",
+    stateMutability: "view",
+    inputs: [{ name: "noteId", type: "uint256" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "collected",
+    stateMutability: "view",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "periodIndex", type: "uint16" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+  {
     type: "function",
     name: "mandateNonce",
     stateMutability: "view",
@@ -390,5 +427,30 @@ export const repaymentMandateAbi = [
       { name: "periodIndex", type: "uint16" },
     ],
     outputs: [{ type: "bytes32" }],
+  },
+] as const;
+
+/**
+ * The token's EIP-2612 surface. `nonces` is the one field a permit signature
+ * cannot be built without, and it increments on every permit — so it is read
+ * at signing time rather than cached.
+ */
+export const usdcPermitAbi = [
+  {
+    type: "function",
+    name: "nonces",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
   },
 ] as const;

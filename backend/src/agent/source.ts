@@ -1,5 +1,5 @@
 import type { Address, Hex, PublicClient } from "viem";
-import { noteAbi, noteFactoryAbi, relayAbi, vaultAbi } from "@/chain/abis";
+import { mandateAbi, noteAbi, noteFactoryAbi, relayAbi, usdcAllowanceAbi, vaultAbi } from "@/chain/abis";
 import { prisma } from "@/db";
 import { NoteStatus, PeriodStatus } from "./decide";
 import type { NoteView, PeriodView } from "./decide";
@@ -39,11 +39,18 @@ export interface NoteSource {
  * from being impure.
  */
 export type PeriodMandate = {
+  /**
+   * "signed" carries a single-use EIP-3009 instrument. "standing" is a permit
+   * the borrower gave once for the whole schedule — there is nothing to carry,
+   * and `signature` is absent because the contract is the authority on when
+   * and how much may be pulled.
+   */
+  kind: "signed" | "standing";
   periodIndex: number;
   value: bigint;
   validAfter: number;
   validBefore: number;
-  signature: Hex;
+  signature?: Hex;
 };
 
 export type ServiceableNote = {
@@ -60,6 +67,9 @@ export class RpcNoteSource implements NoteSource {
     private readonly factory: Address,
     private readonly relay: Address,
     private readonly vault: Address,
+    /** Absent means the standing path is off; only lodged mandates are used. */
+    private readonly mandate: Address | null = null,
+    private readonly usdc: Address = "0x3600000000000000000000000000000000000000",
   ) {}
 
   /** Direct reads are always at head, by definition. */
@@ -140,7 +150,21 @@ export class RpcNoteSource implements NoteSource {
       });
     }
 
-    return { note, address, periods, mandates: await this.mandatesFor(id) };
+    /**
+     * Lodged mandates win over a standing permit for the same period. Both
+     * would work, but a single-use instrument is the narrower authorisation
+     * and spending it first means it cannot sit there expiring while a broader
+     * one does the job.
+     */
+    const borrower = await this.client.readContract({
+      address,
+      abi: noteAbi,
+      functionName: "borrower",
+    });
+    const standing = await this.standingFor(id, borrower, periods);
+    const mandates = { ...standing, ...(await this.mandatesFor(id)) };
+
+    return { note, address, periods, mandates };
   }
 
   /**
@@ -159,11 +183,73 @@ export class RpcNoteSource implements NoteSource {
     const out: Record<number, PeriodMandate> = {};
     for (const r of rows) {
       out[r.periodIndex] = {
+        kind: "signed",
         periodIndex: r.periodIndex,
         value: BigInt(r.value),
         validAfter: Number(r.validAfter),
         validBefore: Number(r.validBefore),
         signature: r.signature as Hex,
+      };
+    }
+    return out;
+  }
+
+  /**
+   * Whether a standing permit covers this note, and for which periods.
+   *
+   * Read from the chain rather than a table, because the chain is where it
+   * lives: the borrower's permit sets an allowance on the token, and the
+   * mandate contract records which periods it has already drawn. A database
+   * copy of either would be a second source of truth that drifts, and this is
+   * one place where being wrong means either failing to collect a debt or
+   * trying to collect it twice.
+   *
+   * Cheap enough to do per note per tick: one allowance read, then one
+   * `collected` read per unsettled period.
+   */
+  private async standingFor(
+    noteId: bigint,
+    borrower: Address,
+    periods: PeriodView[],
+  ): Promise<Record<number, PeriodMandate>> {
+    if (!this.mandate) return {};
+
+    const allowance = await this.client
+      .readContract({
+        address: this.usdc,
+        abi: usdcAllowanceAbi,
+        functionName: "allowance",
+        args: [borrower, this.mandate],
+      })
+      .catch(() => 0n);
+    if (allowance === 0n) return {};
+
+    const out: Record<number, PeriodMandate> = {};
+    for (const period of periods) {
+      const taken = await this.client
+        .readContract({
+          address: this.mandate,
+          abi: mandateAbi,
+          functionName: "collected",
+          args: [noteId, period.index],
+        })
+        // A failed read is not a free pass: assume taken, and let the next
+        // tick decide once the node answers. Collecting twice is the worse
+        // error, and the contract would refuse it anyway.
+        .catch(() => true);
+      if (taken) continue;
+
+      out[period.index] = {
+        kind: "standing",
+        periodIndex: period.index,
+        // The allowance is the ceiling for the whole note, not this period.
+        // `decide` only asks whether something is collectable.
+        value: allowance,
+        // A standing authorisation has no window of its own — the contract
+        // refuses a period that has not ended, which is the same rule, kept
+        // where it cannot be got wrong.
+        validAfter: period.end,
+        validBefore: Number.MAX_SAFE_INTEGER,
       };
     }
     return out;

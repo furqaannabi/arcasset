@@ -134,6 +134,198 @@ contract RepaymentMandateTest is Test {
             _sign(borrowerPk, noteId, period, PAY, block.timestamp - 1, block.timestamp + 1 hours);
     }
 
+    /// Signs the one permit that stands in for every per-period signature.
+    function _permit(uint256 pk, uint256 value, uint256 deadline)
+        internal
+        view
+        returns (uint8 v, bytes32 r, bytes32 s)
+    {
+        address signer = vm.addr(pk);
+        bytes32 structHash = keccak256(
+            abi.encode(
+                MockArcUSDC(payable(USDC)).PERMIT_TYPEHASH(),
+                signer,
+                address(mandate),
+                value,
+                MockArcUSDC(payable(USDC)).nonces(signer),
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", MockArcUSDC(payable(USDC)).DOMAIN_SEPARATOR(), structHash)
+        );
+        (v, r, s) = vm.sign(pk, digest);
+    }
+
+    /// The whole point of the standing path: one signature, every period.
+    function _authorizeWholeSchedule() internal {
+        uint256 owed = mandate.outstanding(noteId);
+        (uint8 v, bytes32 r, bytes32 s) = _permit(borrowerPk, owed, block.timestamp + 365 days);
+        vm.prank(keeper);
+        mandate.authorize(noteId, owed, block.timestamp + 365 days, v, r, s);
+    }
+
+    /// Moves the chain past the end of `period`, which is when its money is due.
+    function _afterPeriod(uint16 period) internal {
+        (, uint64 end) = note.periodBounds(period);
+        vm.warp(end + 1);
+    }
+
+    // -- the standing authorisation -----------------------------------------
+
+    /// One signature covers the schedule, and each period is still pulled on
+    /// its own terms rather than all at once.
+    function test_oneSignatureCoversEveryPeriod() public {
+        // The last period repays the principal as well as its coupon, so a
+        // borrower funded only for coupons cannot finish the schedule. That is
+        // the real shape of a note and the reason this is funded explicitly
+        // rather than left at the setUp default.
+        MockArcUSDC(payable(USDC)).mint(borrower, mandate.outstanding(noteId));
+
+        _authorizeWholeSchedule();
+
+        uint256 startingBalance = MockArcUSDC(payable(USDC)).balanceOf(borrower);
+        uint16 count = note.terms().periodCount;
+
+        for (uint16 i = 0; i < count; i++) {
+            _afterPeriod(i);
+            vm.prank(keeper);
+            mandate.collectScheduled(noteId, i);
+            assertTrue(mandate.collected(noteId, i), "period recorded as taken");
+        }
+
+        assertLt(
+            MockArcUSDC(payable(USDC)).balanceOf(borrower), startingBalance, "borrower paid once"
+        );
+        assertEq(address(mandate).balance, 0, "mandate holds nothing between calls");
+        for (uint16 i = 0; i < count; i++) {
+            assertGe(vault.paidOf(noteId, i), note.periodDue(i), "period settled in full");
+        }
+    }
+
+    /// The signature is a ceiling, not a schedule. Nothing may be pulled before
+    /// the period it belongs to has ended.
+    function test_scheduledCollectionIsRefusedBeforeThePeriodEnds() public {
+        _authorizeWholeSchedule();
+        vm.expectRevert(RepaymentMandate.PeriodNotEnded.selector);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 0);
+    }
+
+    /// An allowance is standing permission, so the replay guard has to live in
+    /// this contract — the token burns no nonce here.
+    function test_scheduledCollectionCannotRunTwice() public {
+        _authorizeWholeSchedule();
+        _afterPeriod(0);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 0);
+
+        vm.expectRevert(RepaymentMandate.AlreadyCollected.selector);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 0);
+    }
+
+    /// The borrower paying by hand must not be charged again for the same
+    /// period.
+    function test_aPeriodPaidByHandIsNotPulled() public {
+        _authorizeWholeSchedule();
+        _afterPeriod(0);
+
+        vm.deal(borrower, note.periodDue(0));
+        vm.prank(borrower);
+        vault.repay{value: note.periodDue(0)}(noteId, 0);
+
+        vm.expectRevert(RepaymentMandate.NothingOutstanding.selector);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 0);
+    }
+
+    /// A partly paid period is topped up, never charged in full again.
+    function test_aPartlyPaidPeriodIsOnlyToppedUp() public {
+        _authorizeWholeSchedule();
+        _afterPeriod(0);
+
+        uint256 due = note.periodDue(0);
+        uint256 half = due / 2;
+        vm.deal(borrower, half);
+        vm.prank(borrower);
+        vault.repay{value: half}(noteId, 0);
+
+        uint256 before = MockArcUSDC(payable(USDC)).balanceOf(borrower);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 0);
+
+        uint256 pulled = (before - MockArcUSDC(payable(USDC)).balanceOf(borrower)) * SCALE;
+        assertApproxEqAbs(pulled, due - half, SCALE, "pulled only the shortfall, to the token unit");
+    }
+
+    /// The allowance is the borrower's ceiling and the contract respects it
+    /// rather than reverting somewhere less legible inside the token.
+    function test_anUnderAuthorisationStopsAtItsCeiling() public {
+        // Enough for the first period and nothing more.
+        uint256 first = (note.periodDue(0) + SCALE - 1) / SCALE;
+        (uint8 v, bytes32 r, bytes32 s) = _permit(borrowerPk, first, block.timestamp + 365 days);
+        vm.prank(keeper);
+        mandate.authorize(noteId, first, block.timestamp + 365 days, v, r, s);
+
+        _afterPeriod(0);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 0);
+
+        _afterPeriod(1);
+        vm.expectRevert(RepaymentMandate.AllowanceTooSmall.selector);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 1);
+    }
+
+    /// Without an authorisation there is nothing to spend, and the refusal is
+    /// ours rather than an opaque one from the token.
+    function test_scheduledCollectionNeedsAnAuthorisation() public {
+        _afterPeriod(0);
+        vm.expectRevert(RepaymentMandate.AllowanceTooSmall.selector);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 0);
+    }
+
+    /// The permit names this contract as the spender, so a stranger relaying it
+    /// gains nothing — and relaying is allowed for the same reason collect is.
+    function test_aStrangerMayRelayTheAuthorisationButGainsNothing() public {
+        uint256 owed = mandate.outstanding(noteId);
+        (uint8 v, bytes32 r, bytes32 s) = _permit(borrowerPk, owed, block.timestamp + 365 days);
+        vm.prank(stranger);
+        mandate.authorize(noteId, owed, block.timestamp + 365 days, v, r, s);
+
+        assertEq(
+            MockArcUSDC(payable(USDC)).allowance(borrower, stranger), 0, "stranger got no allowance"
+        );
+        assertEq(
+            MockArcUSDC(payable(USDC)).allowance(borrower, address(mandate)),
+            owed,
+            "the mandate is the only spender"
+        );
+    }
+
+    /// A stranger's signature cannot authorise the borrower's money.
+    function test_aStrangersPermitIsRefused() public {
+        uint256 owed = mandate.outstanding(noteId);
+        (uint8 v, bytes32 r, bytes32 s) = _permit(strangerPk, owed, block.timestamp + 365 days);
+        vm.expectRevert(MockArcUSDC.InvalidSignature.selector);
+        vm.prank(keeper);
+        mandate.authorize(noteId, owed, block.timestamp + 365 days, v, r, s);
+    }
+
+    /// `outstanding` is what a borrower checks before signing, so it must not
+    /// keep asking for money already paid.
+    function test_outstandingShrinksAsPeriodsAreSettled() public {
+        uint256 before = mandate.outstanding(noteId);
+        _authorizeWholeSchedule();
+        _afterPeriod(0);
+        vm.prank(keeper);
+        mandate.collectScheduled(noteId, 0);
+
+        assertLt(mandate.outstanding(noteId), before, "settled periods drop out");
+    }
+
     function test_collectPaysTheNote() public {
         uint256 before = vault.balanceOf(noteId);
         vm.prank(keeper);

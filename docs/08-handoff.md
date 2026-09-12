@@ -45,7 +45,11 @@ the file validates a required-key list and tolerates the new eighth entry.
 
 ## 2. Index `Collected` from RepaymentMandate
 
-New contract, `0x81b0334115f5641dDE86D7696C52020558Ab84a5`:
+New contract, `0x81b0334115f5641dDE86D7696C52020558Ab84a5` — **since replaced
+by `0x72eF8CC94418cf4460979D4840432f5C4fe426f5`** on Sep 12, which added the
+one-signature authorisation. The old address is retired but still indexed,
+because twelve repayments were collected through it. The `Collected` event
+below is unchanged in both:
 
 ```solidity
 event Collected(

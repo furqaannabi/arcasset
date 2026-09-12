@@ -44,6 +44,15 @@ export type PeriodView = {
  * the agent contributes is the gas and the timing.
  */
 export type MandateView = {
+  /**
+   * Which authorisation this is.
+   *
+   * "signed" is a single-use EIP-3009 instrument the agent must present.
+   * "standing" is an EIP-2612 permit the borrower gave once for the whole
+   * schedule; there is no signature to carry, and the contract itself enforces
+   * when and how much may be pulled.
+   */
+  kind: "signed" | "standing";
   /** Half-open window the borrower signed, in Unix seconds. */
   validAfter: number;
   validBefore: number;

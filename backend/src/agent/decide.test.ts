@@ -25,6 +25,7 @@ const period = (over: Partial<PeriodView> = {}): PeriodView => ({
 });
 
 const mandate = (over: Partial<MandateView> = {}): MandateView => ({
+  kind: "signed",
   validAfter: NOW - DAY,
   validBefore: NOW + DAY,
   value: 1_000n,

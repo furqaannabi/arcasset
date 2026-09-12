@@ -132,6 +132,27 @@ export const usdcAbi = [
  */
 export const mandateAbi = [
   {
+    /** Pull one period under a standing permit. Every bound is on-chain. */
+    type: "function",
+    name: "collectScheduled",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "periodIndex", type: "uint16" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "collected",
+    stateMutability: "view",
+    inputs: [
+      { name: "noteId", type: "uint256" },
+      { name: "periodIndex", type: "uint16" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+  {
     type: "function",
     name: "mandateNonce",
     stateMutability: "view",
@@ -159,5 +180,19 @@ export const mandateAbi = [
       },
     ],
     outputs: [],
+  },
+] as const;
+
+/** The token's allowance view — how the agent learns a standing permit exists. */
+export const usdcAllowanceAbi = [
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
   },
 ] as const;

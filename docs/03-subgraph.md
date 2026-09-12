@@ -292,6 +292,25 @@ an `eth_call` on every event.
 | | `Bought` | shrink `Listing.amount`, bump `Note.soldAmount`, create `Sale`, upsert buyer `Position.bought`/`paid`, bump `Originator.principalSold` |
 | RepaymentVault | `Repaid` | create `Repayment` (reputation record: who paid, on time or not) and its `RepaymentIndex`, bump `Note.totalRepaid`/`Borrower.principalRepaid`; bump `Originator.periodsCuredBySelf` only when the payer is the originator *and* the period was already `Missed` |
 | RepaymentMandate | `Collected` | set `Repayment.collected` on the row the `RepaymentIndex` points at. The event's `value` is the 6-decimal token face of money `Repayment.amount` already holds in 18-decimal native — a factor of `1e12` — so it is deliberately not stored twice |
+| RepaymentMandateRetired | `Collected` | the same handler, on the mandate replaced Sep 12. See below |
+
+### A replaced contract keeps its data source
+
+`RepaymentMandate` was redeployed on Sep 12 and the manifest followed it, which
+silently rewrote history: twelve `Collected` events had been emitted through
+the old address, and every repayment they belonged to flipped to
+`collected: false` — reading as pushed by hand when it had in fact been pulled
+against a signed mandate.
+
+`Repayment.collected` is the fact `/intel` sells. A redeploy is not an event
+that should change who paid, so the retired address stays as its own data
+source on the same handler and the same ABI.
+
+It is deliberately **absent** from `contracts/deployments/<chainId>.json` and
+therefore untouched by `script/sync-addresses.ts`: that file is configuration
+and follows the live set, while a retired address is history and must never
+follow anything. The next replacement adds another entry rather than moving
+this one.
 | RWANote (per-note template) | `StatusChanged` | **the only writer of `Note.status`** — also sets `closedAt` and bumps `notesMatured`/`notesDefaulted` on both parties when terminal |
 | | `PaymentRecorded` | set `Period.paid` to the event's cumulative value — the vault's `Repaid` can cascade one payment across several periods, each getting its own `PaymentRecorded` |
 | | `Transfer` | authoritative `Position.balance` for both sides; recomputes `Note.originatorRetained` when either side is the originator |

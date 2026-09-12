@@ -34,6 +34,44 @@
   },
   {
     "type": "function",
+    "name": "authorize",
+    "inputs": [
+      {
+        "name": "noteId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "v",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "r",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "s",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "collect",
     "inputs": [
       {
@@ -89,6 +127,48 @@
   },
   {
     "type": "function",
+    "name": "collectScheduled",
+    "inputs": [
+      {
+        "name": "noteId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "periodIndex",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "collected",
+    "inputs": [
+      {
+        "name": "noteId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "periodIndex",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "factory",
     "inputs": [],
     "outputs": [
@@ -126,6 +206,25 @@
   },
   {
     "type": "function",
+    "name": "outstanding",
+    "inputs": [
+      {
+        "name": "noteId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "vault",
     "inputs": [],
     "outputs": [
@@ -136,6 +235,37 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "Authorized",
+    "inputs": [
+      {
+        "name": "noteId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "borrower",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
   },
   {
     "type": "event",
@@ -170,12 +300,32 @@
   },
   {
     "type": "error",
+    "name": "AllowanceTooSmall",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AlreadyCollected",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "DirectPaymentRefused",
     "inputs": []
   },
   {
     "type": "error",
+    "name": "NothingOutstanding",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NothingToCollect",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PeriodNotEnded",
     "inputs": []
   },
   {
