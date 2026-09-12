@@ -188,16 +188,34 @@ curable is a repayment the borrower authorised and nobody carried out.
   itself refuses the second attempt. That is why `collect` is permissionless: a
   relayer contributes gas and timing, never permission.
 
-## What is already done on this feature
+## What is live
 
-- `RepaymentMandate` deployed at `0x81b0334115f5641dDE86D7696C52020558Ab84a5`
-- `decide()` returns `COLLECT`, with tests
-- The subgraph indexes `Collected` — `Repayment.collected` distinguishes a
-  pulled repayment from a pushed one, which is the fact the intel product
-  sells. See [03](03-subgraph.md); no mandate has been collected yet, so the
-  field has never been set by real data.
-- Manual repayment ships and is the demo path: `RepaymentVault.repay` from the
-  note page, borrower pushes native value one period at a time.
+- **`RepaymentMandate` at `0x72eF8CC94418cf4460979D4840432f5C4fe426f5`**,
+  deployed Sep 12 to add `authorize` / `collectScheduled`. It replaced
+  `0x81b0334115f5641dDE86D7696C52020558Ab84a5` **on its own** — every other
+  contract in the set is wired with immutables, so a full redeploy would have
+  meant every verified human verifying again and every minted note orphaned.
+  The mandate is the only one nothing else holds a reference to.
+  `contracts/script/deploy-mandate.sh` exists so that stays true next time.
+- **The retired address is still indexed.** Twelve repayments were collected
+  through it, and dropping its data source turned all twelve into repayments
+  that read as pushed by hand. A redeploy does not change who paid — see
+  [03](03-subgraph.md).
+- `decide()` returns `COLLECT` for both authorisation kinds, with tests, and
+  the agent dispatches on the kind rather than on whether a signature happens
+  to be present.
+- The subgraph indexes `Collected`, and it is no longer theoretical:
+
+  | | |
+  |---|---|
+  | via the retired mandate | 12 repayments, `collected: true` |
+  | via the current mandate | 6 repayments, `collected: true` |
+  | pushed by a human | 2 repayments, `collected: false` |
+
+  That is the distinction the intel product sells, set by real data.
+- Manual repayment still ships alongside: `RepaymentVault.repay` from the note
+  page, borrower pushes native value one period at a time. Nothing about the
+  standing path removed it.
 
 ---
 

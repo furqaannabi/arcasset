@@ -206,9 +206,17 @@ Money is `bigint` integer arithmetic from the contract to the render call, and d
 
 ## Deployed — Arc testnet (chain 5042002)
 
-All eight deployed at block 61222219 on Sep 9, replacing the Sep 7 set. The
-addition is `RepaymentMandate`, which collects a repayment the borrower has
-already signed for — see [Automatic repayment](#automatic-repayment).
+Seven deployed at block 61222219 on Sep 9, replacing the Sep 7 set.
+`RepaymentMandate` was replaced on its own on Sep 12 to add the one-signature
+authorisation — see [Automatic repayment](#automatic-repayment).
+
+That replacement touched nothing else, and deliberately: every other contract
+here is wired with immutables, so a full redeploy would mean every verified
+human verifying again and every minted note orphaned. `RepaymentMandate` is the
+only one nothing else holds a reference to — it reads the factory and the
+vault, neither reads it back, and `RepaymentVault.repay` is permissionless. So
+the new one starts working and the old one stops being used.
+`contracts/script/deploy-mandate.sh` is the script that does only that.
 
 Four are **verified on Blockscout**; `Offering`, `RepaymentVault`,
 `ServicingRelay` and `RepaymentMandate` are not, because Blockscout rate-limits
@@ -224,8 +232,13 @@ case.
 | `RepaymentVault` | [`0x5E33f9be7F6008059fEcC429A94Fed017Bd5A25d`](https://testnet.arcscan.app/address/0x5E33f9be7F6008059fEcC429A94Fed017Bd5A25d) | Holds value between repayment and distribution |
 | `ServicingRelay` | [`0xf7974A5bB7caAE07D6d0633B3f6Ac35fb8C06CB6`](https://testnet.arcscan.app/address/0xf7974A5bB7caAE07D6d0633B3f6Ac35fb8C06CB6) | The agent's only reachable surface |
 | `Offering` | [`0x1eb3452C7eAF66C736fC935796999CCf1105fc91`](https://testnet.arcscan.app/address/0x1eb3452C7eAF66C736fC935796999CCf1105fc91) | List, reprice, delist, buy |
-| `RepaymentMandate` | [`0x81b0334115f5641dDE86D7696C52020558Ab84a5`](https://testnet.arcscan.app/address/0x81b0334115f5641dDE86D7696C52020558Ab84a5) | Pulls a repayment the borrower signed for |
+| `RepaymentMandate` | [`0x72eF8CC94418cf4460979D4840432f5C4fe426f5`](https://testnet.arcscan.app/address/0x72eF8CC94418cf4460979D4840432f5C4fe426f5) | Pulls a repayment the borrower signed for |
 | `PersonhoodVerifier` | [`0x89bFE1652c0fB4958701ed5D7e8Ca5c580d67250`](https://testnet.arcscan.app/address/0x89bFE1652c0fB4958701ed5D7e8Ca5c580d67250) | `AttestedVerifier` — see the caveat below |
+
+The mandate this replaced, [`0x81b0334115f5641dDE86D7696C52020558Ab84a5`](https://testnet.arcscan.app/address/0x81b0334115f5641dDE86D7696C52020558Ab84a5),
+is retired but still indexed. Twelve repayments were collected through it, and
+a redeploy is not an event that should change who paid — see
+[03 — Subgraph](docs/03-subgraph.md).
 
 Deployed and wired by `contracts/script/deploy-testnet.sh`, which refuses to run
 unless the RPC reports chain 5042002. Every wiring edge was then checked by
