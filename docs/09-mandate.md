@@ -134,20 +134,50 @@ USDC.DOMAIN_SEPARATOR()                     0x361191522483d32a83e70ae7183b4b9629
 hashDomain(USDC, 2, 5042002, 0x3600…0000)   0x361191522483d32a83e70ae7183b4b9629442c13a78bc9921d6f707911c8c6b0
 ```
 
-**One open question, and it changes where the screen lives.** A mandate covers
-one period, so a twelve-period note is twelve wallet prompts. Three options:
+### Resolved: one signature can cover several periods
 
-1. **All of them, at accept time.** The borrower is already signing and already
-   looking at the schedule. Twelve prompts in a row is a lot to ask on camera.
-2. **The next N.** Fewer prompts, but the automatic path silently stops working
-   when they run out, which is the failure mode this whole feature exists to
-   prevent.
-3. **On demand, from the note page.** Least pressure, least coverage — a
-   borrower who never returns has authorised nothing.
+This was an open question — a mandate covers one period, so a twelve-period
+note meant twelve wallet prompts, and none of the three options on the table
+was good. Signing all of them is a lot to sit through; signing fewer leaves the
+automatic path silently short.
 
-Decide before I build it. My preference is (1) with a count the borrower
-chooses, defaulting to all of them, because a partial mandate is a promise the
-agent cannot keep and nobody will notice until a period is marked late.
+The way out was already in `RepaymentVault.repay`: it **cascades overpayment
+forward** rather than parking it against a period already covered. So one
+mandate signed for the sum of several consecutive periods settles all of them
+when it is collected — the vault walks the schedule and credits each in turn.
+
+The borrower picks how many periods a signature covers. The default is whatever
+keeps the count at four or fewer:
+
+| Periods | Group | Signatures |
+|---|---|---|
+| 3 | 1 | 3 — unchanged, grouping a short schedule pays early for nothing |
+| 6 | 2 | 3 |
+| 12 | 3 | **4**, was 12 |
+| 36 | 9 | **4**, was 36 |
+
+The cost is timing and only timing, and the screen states it rather than
+burying it: a group is collected when its **first** period falls due, so the
+last period in a group is paid early by up to `size - 1` periods. The amount is
+identical, and nothing can be taken outside a window the borrower signed.
+
+Groups are contiguous and anchored at their first period, because the cascade
+only ever runs forward — an anchor anywhere else would strand the periods
+before it. The arithmetic is in `web/src/lib/mandate.ts` with tests: it sums
+18-decimal native across a schedule whose last period also repays principal,
+and a sum short by one base unit is a mandate that reverts `ShortCollection`
+after the agent has already spent the gas.
+
+### The window opens at the anchor's end, not its start
+
+A period's money is due at its end — that is what `onTime` is measured against
+— so a mandate live from the period's start had the agent collecting before
+anything was owed. Harmless for a single period, and for a group it would have
+pulled the whole group's money the instant the first period opened.
+
+It stays open through grace and cure, because collecting during the cure window
+is exactly what should happen: a mandate that expires while the note is still
+curable is a repayment the borrower authorised and nobody carried out.
 
 ## Two things that are already right
 
@@ -200,12 +230,14 @@ your reason. A partial mandate is a promise the agent cannot keep, and the
 failure is silent until a period is marked late, which is the exact outcome
 this feature exists to prevent.
 
-Two things that make the prompt count less bad than it reads:
+Grouping has since taken most of this problem away — see *Resolved: one
+signature can cover several periods* above. What remains is small and worth
+keeping in mind:
 
-- The demo note is **three periods**, not twelve. Three prompts at accept, and
-  the schedule is already on screen at that moment.
+- The demo note is **three periods**, not twelve, so it stays at three
+  signatures: grouping a short schedule would pay early to save nothing.
 - They are EIP-712 signatures, not transactions. No gas, no confirmations, no
-  block wait. Wallets batch these far more gracefully than sends.
+  block wait.
 
 If it is still too slow on camera, the cut is to sign period 0 only and let the
 demo show one collect — not to sign fewer than the schedule and call it
