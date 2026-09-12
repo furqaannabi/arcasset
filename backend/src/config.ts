@@ -21,6 +21,17 @@ export type Config = {
   attestorKey: Hex | null;
   worldAppId: string | null;
   worldAction: string | null;
+  /** Registered relying party, rp_… — /api/v4/verify is addressed by it. */
+  worldRpId: string | null;
+  /** Signs proof requests. Without it World answers invalid_rp_signature. */
+  worldSigningKey: string | null;
+  /**
+   * Environments whose proofs we accept. A sandbox proof is a real proof from
+   * a different world, and the sandbox World App is how Selfie Check is tested
+   * before it is enabled in production — so this is a list, defaulting to
+   * production only, rather than a boolean nobody can widen safely.
+   */
+  worldEnvironments: string[];
   dangerousAttestWithoutWorld: boolean;
   corsOrigins: string[];
 };
@@ -61,6 +72,12 @@ export function loadConfig(): Config {
     attestorKey: privateKeyFrom(process.env["ATTESTOR_PRIVATE_KEY"]),
     worldAppId: process.env["WORLD_APP_ID"] || null,
     worldAction: process.env["WORLD_ACTION"] || null,
+    worldRpId: process.env["WORLD_RP_ID"] || null,
+    worldSigningKey: process.env["WORLD_RP_SIGNING_KEY"] || null,
+    worldEnvironments: (process.env["WORLD_ENVIRONMENTS"] || "production")
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean),
     // Opt in, explicitly, and never by an unset variable.
     dangerousAttestWithoutWorld: process.env["DANGEROUS_ATTEST_WITHOUT_WORLD"] === "true",
     // An allowlist, never "*". Every authenticated route here takes a bearer

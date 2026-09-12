@@ -175,8 +175,14 @@ app.route(
     verifier: deployment.PersonhoodVerifier,
     chainId: config.chainId,
     world:
-      config.worldAppId && config.worldAction
-        ? { appId: config.worldAppId, action: config.worldAction }
+      config.worldAppId && config.worldAction && config.worldRpId
+        ? {
+            appId: config.worldAppId,
+            action: config.worldAction,
+            rpId: config.worldRpId,
+            signingKey: config.worldSigningKey,
+            environments: config.worldEnvironments,
+          }
         : null,
     dangerousWithoutWorld: config.dangerousAttestWithoutWorld,
     publicClient,

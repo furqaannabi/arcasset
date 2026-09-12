@@ -1,129 +1,219 @@
-import { hashToField } from "@worldcoin/idkit-core/hashing";
+import { hashSignal } from "@worldcoin/idkit-core/hashing";
+import { signRequest } from "@worldcoin/idkit-core/signing";
 
 /**
- * Verifies a World Selfie Check result against World's cloud API.
+ * World ID, at protocol 4 — Selfie Check.
  *
- * Selfie Check has no on-chain proof artifact — it is verified server-side and
- * the API returns the nullifier. That is why this file exists at all, and why
- * the chain ends up trusting an attestor. See docs/06-identity.md.
+ * Two things changed from the 3.0 integration this replaces, and both are
+ * structural rather than cosmetic.
+ *
+ * A proof request is now signed by us before the user ever sees it. World
+ * calls that the RP context: a nonce, a validity window and our signature over
+ * them, proving the request came from this relying party and not from someone
+ * impersonating it. That is why `rpContext` exists below and why the frontend
+ * has to ask the backend before it can open the widget at all.
+ *
+ * And verification moved to `/api/v4/verify/{rp_id}`, addressed by relying
+ * party rather than by app. The response carries a list of credential
+ * responses rather than one proof, because a request can ask for several.
+ *
+ * What Selfie Check is, precisely, because the rest of this system depends on
+ * not overstating it: a medium-assurance check that a live human completed a
+ * face scan, and that a returning human's face matches the one enrolled. It is
+ * NOT a uniqueness proof. World's own documentation says it "does not provide
+ * a strict one-person-one-account guarantee". See docs/06-identity.md for what
+ * that costs us and what we do about it.
  */
 
-export type WorldProof = {
-  nullifier_hash: string;
-  proof: string;
-  merkle_root: string;
-  verification_level: string;
-};
-
-export type WorldResult =
-  | { ok: true; nullifierHash: string; verificationLevel: string }
-  | { ok: false; code: string; detail: string };
+/** Credential issuer schema ids. 11 is Selfie Check; 1 is Orb proof-of-human. */
+export const SCHEMA_SELFIE = 11;
+export const SCHEMA_PROOF_OF_HUMAN = 1;
 
 export type WorldConfig = {
   appId: string;
   action: string;
+  /** The registered relying party, rp_…, which /api/v4/verify is addressed by. */
+  rpId: string;
+  /** Signs the proof request. Without it World rejects with invalid_rp_signature. */
+  signingKey: string | null;
+  /** Which proof environments this server honours — see config.ts. */
+  environments: string[];
   baseUrl?: string;
 };
+
+/** What the browser needs to open a request. Everything here is public. */
+export type RpContext = {
+  rp_id: string;
+  nonce: string;
+  created_at: number;
+  expires_at: number;
+  signature: string;
+};
+
+/**
+ * One credential response. The fields we care about are the same in 3.0 and
+ * 4.0; the rest of the shape is not, which is why this is narrowed here rather
+ * than passed around raw.
+ */
+export type WorldResponseItem = {
+  identifier?: string;
+  nullifier?: string;
+  issuer_schema_id?: number;
+  signal_hash?: string;
+  expires_at_min?: number;
+};
+
+export type WorldProof = {
+  protocol_version?: string;
+  nonce?: string;
+  action?: string;
+  environment?: string;
+  responses: WorldResponseItem[];
+};
+
+export type WorldResult =
+  | {
+      ok: true;
+      nullifierHash: string;
+      /** 11 for Selfie Check. Recorded so a scorecard can say which credential. */
+      schemaId: number;
+      credential: string;
+      /** Selfie Check expires; the chain records when, so a stale one is visible. */
+      expiresAt: number | null;
+      environment: string;
+    }
+  | { ok: false; code: string; detail: string };
 
 export function isWorldProof(v: unknown): v is WorldProof {
   if (typeof v !== "object" || v === null) return false;
   const p = v as Record<string, unknown>;
-  return (
-    typeof p["nullifier_hash"] === "string" &&
-    typeof p["proof"] === "string" &&
-    typeof p["merkle_root"] === "string" &&
-    typeof p["verification_level"] === "string"
-  );
+  return Array.isArray(p["responses"]) && p["responses"].length > 0;
 }
 
 /**
- * Verifies against `/api/v2/verify/{app_id}`, which is what IDKit 2.x proofs
- * are meant for. This mirrors IDKit's own `verifyCloudProof` exactly: the flat
- * proof, the action, and `signal_hash`.
+ * Sign a proof request so World will accept it.
  *
- * Two things had to be wrong together for this to fail the way it did. The v4
- * endpoint rejects the flat 3.0 body outright ("responses array is required"),
- * and its envelope, once built, still returned `invalid_proof` — because the
- * signal was being sent raw. World binds `hashToField(signal)` into the proof
- * (keccak256 shifted right eight bits), so anything else is a different public
- * input and the proof cannot verify.
+ * The signature covers a nonce and a window, never the person — this says
+ * "ArcAsset asked for this", nothing about who answers. Short-lived by
+ * default, because a leaked request context should stop being useful quickly
+ * and asking for another costs one call.
+ */
+export function rpContext(config: WorldConfig, ttlSeconds = 300): RpContext | null {
+  if (!config.signingKey) return null;
+  const signed = signRequest({
+    signingKeyHex: config.signingKey,
+    action: config.action,
+    ttl: ttlSeconds,
+  });
+  return {
+    rp_id: config.rpId,
+    nonce: signed.nonce,
+    created_at: signed.createdAt,
+    expires_at: signed.expiresAt,
+    signature: signed.sig,
+  };
+}
+
+/**
+ * Verify a Selfie Check proof against World's cloud API.
  *
- * hashToField comes from @worldcoin/idkit-core pinned to the same 2.1.0 the
- * web app resolves, rather than reimplemented here — the two must agree to the
- * bit, and a subtly different hash fails as `invalid_proof` with nothing to
- * point at.
+ * The signal is hashed here rather than sent raw: World binds
+ * `hashToField(signal)` into the proof as a public input — keccak256 shifted
+ * right eight bits — so a raw address is a different value and the proof
+ * cannot verify. That cost an afternoon once; hashToField is imported from
+ * idkit-core rather than reimplemented so the two sides cannot drift.
  */
 export async function verifyWithWorld(
   proof: WorldProof,
   config: WorldConfig,
   signal?: string,
 ): Promise<WorldResult> {
-  const base = config.baseUrl ?? "https://developer.worldcoin.org/api/v2/verify";
+  const base = config.baseUrl ?? "https://developer.worldcoin.org/api/v4/verify";
+
   let res: Response;
   try {
-    res = await fetch(`${base}/${config.appId}`, {
+    res = await fetch(`${base}/${config.rpId}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
+      // Forwarded as IDKit produced it, plus what only we know: which action
+      // and what the signal was. Reshaping the proof is how the last
+      // integration broke.
       body: JSON.stringify({
-        nullifier_hash: proof.nullifier_hash,
-        proof: proof.proof,
-        merkle_root: proof.merkle_root,
-        verification_level: proof.verification_level,
+        ...proof,
         action: config.action,
-        signal_hash: hashToField(signal ?? "").digest,
+        signal_hash: hashSignal(signal ?? ""),
       }),
     });
   } catch (err) {
-    // Unreachable is not the same as invalid, and must never be treated as a
-    // pass. It is also not the applicant's fault, so it is a 503 upstream.
+    // Unreachable is not invalid and must never be treated as a pass. It is
+    // also not the applicant's fault, so it surfaces as a 503.
     return { ok: false, code: "world_unreachable", detail: String(err) };
   }
 
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
   if (!res.ok) {
-    // World answers 400 with the per-proof reason nested in `results`; the
-    // top-level code only says that something failed. Log the whole body —
-    // diagnosing a rejected proof without it is guesswork.
+    // The per-proof reason is nested; the top level only says something
+    // failed. Logged whole, because diagnosing a rejected proof without it is
+    // guesswork — which is exactly how the last one went.
     console.warn(`[world] ${res.status} rejected the proof: ${JSON.stringify(body)}`);
-    const nested = Array.isArray(body["results"])
-      ? (body["results"] as Record<string, unknown>[])[0]
-      : undefined;
-    const code = nested?.["code"] ?? body["code"];
-    const detail = nested?.["detail"] ?? body["detail"];
-    return {
-      ok: false,
-      code: typeof code === "string" ? code : `world_http_${res.status}`,
-      detail: typeof detail === "string" ? detail : JSON.stringify(body),
-    };
+    return { ok: false, ...reason(body, `world_http_${res.status}`) };
   }
 
-  // v4 answers 200 with success:false when every proof failed, so the status
-  // code alone is not the verdict.
-  const results = Array.isArray(body["results"])
-    ? (body["results"] as Record<string, unknown>[])
-    : [];
+  const results = Array.isArray(body["results"]) ? (body["results"] as Record<string, unknown>[]) : [];
   const first = results[0];
   if (body["success"] === false || (first && first["success"] === false)) {
-    // The per-proof entry says *why*; the top level only says that something
-    // failed. Logged whole because chasing this without it is guesswork.
     console.warn(`[world] verification failed: ${JSON.stringify(body)}`);
-    const code = first?.["code"] ?? body["code"];
-    const detail = first?.["detail"] ?? body["detail"];
-    return {
-      ok: false,
-      code: typeof code === "string" ? code : "world_rejected",
-      detail: typeof detail === "string" ? detail : JSON.stringify(body),
-    };
+    return { ok: false, ...reason(body, "world_rejected") };
   }
 
   // Trust the nullifier World returns, not the one the client sent. A client
   // that could name its own nullifier could name somebody else's.
-  const returned = first?.["nullifier"] ?? body["nullifier"] ?? body["nullifier_hash"];
-  const nullifierHash = typeof returned === "string" ? returned : proof.nullifier_hash;
-  const level = first?.["identifier"] ?? body["verification_level"];
+  const item = pickSelfie(results, proof.responses);
+  const nullifier = str(first?.["nullifier"]) ?? str(body["nullifier"]) ?? item?.nullifier;
+  if (!nullifier) {
+    return { ok: false, code: "world_no_nullifier", detail: JSON.stringify(body) };
+  }
+
+  const schemaId = num(first?.["issuer_schema_id"]) ?? item?.issuer_schema_id ?? 0;
   return {
     ok: true,
-    nullifierHash,
-    verificationLevel: typeof level === "string" ? level : proof.verification_level,
+    nullifierHash: nullifier,
+    schemaId,
+    credential: str(first?.["identifier"]) ?? item?.identifier ?? credentialName(schemaId),
+    expiresAt: num(first?.["expires_at_min"]) ?? item?.expires_at_min ?? null,
+    // Sandbox and staging proofs are real proofs from a different world. The
+    // caller decides whether to accept one; this only reports which it was.
+    environment: str(body["environment"]) ?? proof.environment ?? "unknown",
   };
 }
+
+/** Prefer the Selfie Check response when a request asked for several. */
+function pickSelfie(
+  results: Record<string, unknown>[],
+  responses: WorldResponseItem[],
+): WorldResponseItem | undefined {
+  const fromResults = results.find((r) => num(r["issuer_schema_id"]) === SCHEMA_SELFIE);
+  if (fromResults) return fromResults as WorldResponseItem;
+  return responses.find((r) => r.issuer_schema_id === SCHEMA_SELFIE) ?? responses[0];
+}
+
+export function credentialName(schemaId: number): string {
+  if (schemaId === SCHEMA_SELFIE) return "selfie";
+  if (schemaId === SCHEMA_PROOF_OF_HUMAN) return "proof_of_human";
+  if (schemaId === 9303) return "passport";
+  return `schema_${schemaId}`;
+}
+
+function reason(body: Record<string, unknown>, fallback: string): { code: string; detail: string } {
+  const nested = Array.isArray(body["results"])
+    ? (body["results"] as Record<string, unknown>[])[0]
+    : undefined;
+  return {
+    code: str(nested?.["code"]) ?? str(body["code"]) ?? fallback,
+    detail: str(nested?.["detail"]) ?? str(body["detail"]) ?? JSON.stringify(body),
+  };
+}
+
+const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);

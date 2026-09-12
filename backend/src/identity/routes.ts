@@ -3,7 +3,7 @@ import { isAddress, keccak256, encodePacked } from "viem";
 import type { Address, Hex, PublicClient } from "viem";
 import { addressForToken } from "@/auth/session";
 import { signAttestation, domainSeparator, nullifierToBytes32 } from "./attest";
-import { isWorldProof, verifyWithWorld } from "./world";
+import { isWorldProof, verifyWithWorld, rpContext, credentialName, SCHEMA_SELFIE } from "./world";
 import type { WorldConfig } from "./world";
 
 const verifierAbi = [
@@ -46,7 +46,18 @@ export function identityRoutes(opts: IdentityOptions): Hono {
         matches: Boolean(opts.attestorAddress && onChainAttestor &&
           opts.attestorAddress.toLowerCase() === onChainAttestor.toLowerCase()) },
       domainSeparator: { local: localDomain, onChain: onChainDomain, matches: localDomain === onChainDomain },
-      world: opts.world ? { appId: opts.world.appId, action: opts.world.action } : null,
+      world: opts.world
+        ? {
+            appId: opts.world.appId,
+            action: opts.world.action,
+            rpId: opts.world.rpId,
+            // A missing signing key is silent until the first verification
+            // fails with invalid_rp_signature, so it is reported here instead.
+            requestSigning: opts.world.signingKey ? "configured" : "MISSING — proof requests cannot be signed",
+            environments: opts.world.environments,
+            credential: credentialName(SCHEMA_SELFIE),
+          }
+        : null,
       ...(opts.dangerousWithoutWorld
         ? {
             WARNING:
@@ -55,6 +66,34 @@ export function identityRoutes(opts: IdentityOptions): Hono {
           }
         : {}),
     });
+  });
+
+  /**
+   * The signed proof request the browser needs before it can open the widget.
+   *
+   * World ID 4 will not accept an unsigned request — it answers
+   * invalid_rp_signature — so this is not optional plumbing, it is the first
+   * step of every verification. Nothing here identifies anyone: it is a nonce,
+   * a short window, and our signature saying the request is ours.
+   */
+  app.get("/rp-context", (c) => {
+    if (!opts.world) {
+      return c.json(
+        { error: "unavailable", message: "World is not configured on this server" },
+        503,
+      );
+    }
+    const context = rpContext(opts.world);
+    if (!context) {
+      return c.json(
+        {
+          error: "unavailable",
+          message: "WORLD_RP_SIGNING_KEY is not set, so proof requests cannot be signed",
+        },
+        503,
+      );
+    }
+    return c.json({ rp_context: context, app_id: opts.world.appId, action: opts.world.action });
   });
 
   /**
@@ -76,6 +115,7 @@ export function identityRoutes(opts: IdentityOptions): Hono {
     }
 
     let nullifier: Hex;
+    let credential: { schemaId: number; name: string; expiresAt: number | null } | null = null;
 
     // The bypass wins when it is set, even if World is configured. It is named
     // to be unmissable and it is reported by /health and /identity/status; a
@@ -106,6 +146,26 @@ export function identityRoutes(opts: IdentityOptions): Hono {
         const status = result.code === "world_unreachable" ? 503 : 400;
         return c.json({ error: result.code, message: result.detail }, status);
       }
+
+      /**
+       * A sandbox proof is a real proof from a different world. Accepting one
+       * in production would mean anyone with the sandbox app could verify, so
+       * the environments we honour are named in config rather than assumed —
+       * and the refusal says which environment it got, because "invalid proof"
+       * for a proof that is perfectly valid elsewhere is a bad afternoon.
+       */
+      if (!opts.world.environments.includes(result.environment)) {
+        console.warn(`[identity] refused a ${result.environment} proof from ${party}`);
+        return c.json(
+          {
+            error: "wrong_environment",
+            message: `this server accepts ${opts.world.environments.join(", ")} proofs; that one came from ${result.environment}`,
+          },
+          400,
+        );
+      }
+
+      credential = { schemaId: result.schemaId, name: result.credential, expiresAt: result.expiresAt };
       nullifier = nullifierToBytes32(result.nullifierHash);
     } else if (opts.dangerousWithoutWorld) {
       // Derived from the address, so it is at least stable per address — but it
@@ -135,6 +195,25 @@ export function identityRoutes(opts: IdentityOptions): Hono {
       // The caller submits this themselves and pays for it — the attestation
       // authorises verification, it does not perform it.
       submit: { to: "PartyRegistry", method: "verify(address,bytes)", args: [attestation.party, attestation.proof] },
+      /**
+       * Which credential answered, stated rather than implied. Selfie Check
+       * (schema 11) is medium-assurance: it proves a live human completed a
+       * face scan and that a returning face matches, and World is explicit
+       * that it "does not provide a strict one-person-one-account guarantee".
+       * A caller that assumes uniqueness from this field is wrong, so the
+       * field says so out loud.
+       */
+      ...(credential
+        ? {
+            credential: {
+              ...credential,
+              unique: credential.schemaId !== SCHEMA_SELFIE,
+              ...(credential.schemaId === SCHEMA_SELFIE
+                ? { note: "Selfie Check is a liveness and continuity signal, not a uniqueness proof" }
+                : {}),
+            },
+          }
+        : {}),
       ...(opts.dangerousWithoutWorld ? { WARNING: "no personhood was checked" } : {}),
     });
   });
