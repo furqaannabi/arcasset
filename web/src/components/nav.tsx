@@ -21,6 +21,20 @@ export function Nav() {
            * The mark carries its own dark tile, so it reads on both themes
            * without a second file — the wordmark alone is near-white and
            * would disappear on the light canvas.
+           *
+           * suppressHydrationWarning is for something we do not control. Dark
+           * Reader and extensions like it rewrite images before React hydrates,
+           * adding `filter: invert(...)` to the element's own style attribute —
+           * so the DOM React finds is not the DOM it rendered, and it says so:
+           *
+           *   style={{color:"transparent"}}
+           *   style={{color:"transparent",filter:"invert(0)"}}
+           *
+           * `invert` appears nowhere in this repo or its build. There is no
+           * mismatch to fix in our markup, and nothing React can reconcile —
+           * the visitor asked their browser to do that. This is the same reason
+           * <html> carries the prop in layout.tsx, where the theme script
+           * mutates the element before hydration.
            */}
           <Image
             src="/mark.png"
@@ -29,6 +43,7 @@ export function Nav() {
             height={22}
             className="rounded-[5px]"
             priority
+            suppressHydrationWarning
           />
           <span className="font-mono text-sm tracking-tight">ArcAsset</span>
         </Link>
