@@ -148,11 +148,42 @@ dataSources:
           handler: handleRepaid
       file: ./src/repayment-vault.ts
 
+  # The mandate this set replaced on Sep 12. Kept because a redeploy does not
+  # unmake what was already collected: twelve events were emitted through this
+  # address, and dropping it turned every repayment it had pulled into one that
+  # reads as pushed by hand. `Repayment.collected` is the fact /intel sells —
+  # who actually paid — so it has to stay true for payments that really were.
+  #
+  # Deliberately not in deployments/<chainId>.json and therefore untouched by
+  # sync-addresses.ts: this address is history, not configuration, and must
+  # never follow a future redeploy.
+  - kind: ethereum
+    name: RepaymentMandateRetired
+    network: arc-testnet
+    source:
+      address: "0x81b0334115f5641dDE86D7696C52020558Ab84a5"
+      abi: RepaymentMandate
+      startBlock: 61222219
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Repayment
+        - RepaymentIndex
+      abis:
+        - name: RepaymentMandate
+          file: ./abis/RepaymentMandate.json
+      eventHandlers:
+        - event: Collected(indexed uint256,indexed uint16,indexed address,uint256)
+          handler: handleCollected
+      file: ./src/repayment-mandate.ts
+
   - kind: ethereum
     name: RepaymentMandate
     network: arc-testnet
     source:
-      address: "0x81b0334115f5641dDE86D7696C52020558Ab84a5"
+      address: "0x72eF8CC94418cf4460979D4840432f5C4fe426f5"
       abi: RepaymentMandate
       startBlock: 61222219
     mapping:
