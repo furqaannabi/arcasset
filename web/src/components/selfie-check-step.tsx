@@ -1,102 +1,108 @@
 "use client";
 
 import { useState } from "react";
-import { IDKitWidget, VerificationLevel, type ISuccessResult } from "@worldcoin/idkit";
+import { IDKitRequestWidget, selfieCheckLegacy } from "@worldcoin/idkit";
+import type { IDKitErrorCodes, IDKitResult, RpContext } from "@worldcoin/idkit";
 import { useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { zeroAddress, type Address, type Hex } from "viem";
 import { addressUrl, txUrl } from "@/lib/chain";
 import { PARTY_REGISTRY } from "@/lib/deployments";
 import { partyRegistryAbi } from "@/lib/abis";
 import { shortAddress } from "@/lib/format";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/use-session";
-import { Button, Eyebrow, Panel } from "./ui";
+import { Button, Chip, Eyebrow, Panel } from "./ui";
 import { StackBadge } from "./stack";
 
 /**
- * World Selfie Check → an attestation → one on-chain transaction.
+ * World ID Selfie Check → an attestation → one on-chain transaction.
  *
- * Why it is not the usual World ID flow: there is no World ID Router on Arc,
- * and Selfie Check never verifies on-chain anywhere — only Orb does. So the
- * proof goes to our backend, which checks it against World's cloud API and
- * signs (party, nullifier); AttestedVerifier recovers that signature on-chain.
- * The full reasoning, and what it costs, is in docs/06-identity.md.
+ * What Selfie Check proves, stated precisely, because the rest of this app
+ * depends on not overstating it: a live human completed a face scan, and a
+ * returning human's face matches the one enrolled. World is explicit that it
+ * "does not provide a strict one-person-one-account guarantee" — it is a
+ * medium-assurance liveness and continuity signal, and it lapses after 90 days
+ * of inactivity. That is a different claim from Orb's, and this screen says so
+ * rather than letting a reader assume otherwise.
+ *
+ * Why it still runs through our backend rather than a contract: there is no
+ * World ID Router on Arc, and Selfie Check has no on-chain proof artifact
+ * anywhere. The proof goes to our server, which verifies it against World's
+ * cloud API and signs (party, nullifier); AttestedVerifier recovers that
+ * signature on-chain. docs/06-identity.md has the full reasoning and what it
+ * costs.
  */
 
 const APP_ID = process.env.NEXT_PUBLIC_WORLD_APP_ID as `app_${string}` | undefined;
 const ACTION = process.env.NEXT_PUBLIC_WORLD_ACTION ?? "personhood";
 
-/**
- * Which credential we ask World for. Defaults to Orb, because Orb is the only
- * level that actually backs the claim this app makes — a unique living person.
- *
- * `device` is far weaker: it proves a distinct device, not a distinct human,
- * so one person with two phones is two identities and the sybil defence this
- * whole design rests on is mostly gone. It is set-able because it is the only
- * level anyone can complete on demand, but the UI says which level was used
- * and the README must too. Do not describe a device-level verification as
- * proof of personhood.
- */
-const LEVEL: VerificationLevel =
-  process.env.NEXT_PUBLIC_WORLD_VERIFICATION_LEVEL === "device"
-    ? VerificationLevel.Device
-    : VerificationLevel.Orb;
+type Attestation = {
+  party: Address;
+  nullifier: Hex;
+  expiry: number;
+  proof: Hex;
+  credential?: { name: string; schemaId: number; expiresAt: number | null; unique: boolean };
+};
 
-const LEVEL_IS_WEAK = LEVEL === VerificationLevel.Device;
-
-/**
- * Which World network to talk to. Staging apps can only be completed in the
- * simulator, and the simulator rejects a request built against the production
- * bridge with "production request detected" — the bridge is what carries the
- * environment, not the app id.
- *
- * Unset means production. Set it to https://staging-bridge.worldcoin.org while
- * the portal app is in Staging.
- */
-const BRIDGE_URL = process.env.NEXT_PUBLIC_WORLD_BRIDGE_URL || undefined;
-const IS_STAGING = Boolean(BRIDGE_URL?.includes("staging"));
-
-type Attestation = { party: Address; nullifier: Hex; expiry: number; proof: Hex };
+/** What the backend signs before the widget will open. */
+type Request = { rp_context: RpContext; app_id: `app_${string}`; action: string };
 
 type Phase =
   | { at: "idle" }
+  | { at: "requesting" }
   | { at: "attesting" }
   | { at: "ready"; attestation: Attestation }
   | { at: "failed"; message: string; nullifierUsed?: boolean };
 
 /**
- * Selectors, because a wallet that estimates gas itself may hand back the
- * raw revert data with no ABI applied — matching only on the decoded name
- * then silently misses the one failure this screen most needs to explain.
+ * Selectors, because a wallet that estimates gas itself may hand back raw
+ * revert data with no ABI applied — matching only on the decoded name then
+ * silently misses the one failure this screen most needs to explain.
  */
 const NULLIFIER_USED = "0x92814985";
 const ALREADY_VERIFIED = "0x118fd7b8";
 
-function isNullifierUsed(message: string): boolean {
-  return /NullifierUsed/i.test(message) || message.includes(NULLIFIER_USED);
-}
-
-function isAlreadyVerified(message: string): boolean {
-  return /AlreadyVerified/i.test(message) || message.includes(ALREADY_VERIFIED);
-}
+const isNullifierUsed = (m: string) => /NullifierUsed/i.test(m) || m.includes(NULLIFIER_USED);
+const isAlreadyVerified = (m: string) => /AlreadyVerified/i.test(m) || m.includes(ALREADY_VERIFIED);
 
 export function SelfieCheckStep({ party }: { party: Address | undefined }) {
-  const { authed, signingIn } = useSession();
+  const { ensureSession, authed, signingIn } = useSession();
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
+  const [request, setRequest] = useState<Request | null>(null);
+  const [widgetOpen, setWidgetOpen] = useState(false);
 
   const publicClient = usePublicClient();
   const { writeContract, data: hash, isPending, reset } = useWriteContract();
   const receipt = useWaitForTransactionReceipt({ hash });
 
   /**
-   * Runs after World returns a proof. Exchanges it for an attestation and
-   * holds it — submitting is a separate, explicit click, because it costs gas
-   * and the person should be the one to spend it.
+   * World ID 4 refuses an unsigned proof request — `invalid_rp_signature` —
+   * so every verification starts on our server, which signs a nonce and a
+   * short window. The context is fetched per attempt rather than held: it
+   * expires, and a stale one fails in the widget where it is hardest to read.
    */
-  async function onWorldSuccess(result: ISuccessResult) {
+  async function begin() {
+    setPhase({ at: "requesting" });
+    try {
+      const r = await api<Request>("/identity/rp-context");
+      setRequest(r);
+      setWidgetOpen(true);
+      setPhase({ at: "idle" });
+    } catch (e) {
+      setPhase({ at: "failed", message: describe(e) });
+    }
+  }
+
+  /** Runs after World returns a proof. */
+  async function onVerify(result: IDKitResult) {
     if (!party) return;
     setPhase({ at: "attesting" });
     try {
+      const token = await ensureSession();
+      if (!token) {
+        setPhase({ at: "failed", message: "Sign in with this wallet to continue." });
+        return;
+      }
       const attestation = await authed<Attestation>("/identity/attest", {
         method: "POST",
         body: JSON.stringify({ proof: result }),
@@ -104,13 +110,10 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
 
       /**
        * A World nullifier is derived from the app and action, not the wallet,
-       * so the same person scanning from a second address gets the same one —
-       * and PartyRegistry has already bound it to the first address, for good.
-       * Reading that binding here turns a wallet-level revert into a sentence,
-       * and stops us offering a button that cannot succeed.
-       *
-       * A failed read is not a failed verification: the chain is the authority
-       * and will refuse it anyway, so fall through and let it.
+       * so the same person verifying from a second address gets the same one —
+       * and PartyRegistry has already bound it to the first, for good. Reading
+       * that binding here turns a wallet-level revert into a sentence, and
+       * stops us offering a button that cannot succeed.
        */
       const bound = await boundTo(attestation.nullifier);
       if (bound && bound !== attestation.party.toLowerCase()) {
@@ -155,10 +158,10 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
       },
       {
         onError: (e) => {
-          // NullifierUsed is not a retryable failure and must not be dressed
-          // up as one — the nullifier is bound for good, by design. It should
-          // have been caught before the button appeared; this is the backstop
-          // for the case where it was claimed in between.
+          // NullifierUsed is not retryable and must not be dressed up as one —
+          // the binding is permanent by design. It should have been caught
+          // before the button appeared; this is the backstop for the case
+          // where it was claimed in between.
           const used = isNullifierUsed(e.message);
           setPhase({
             at: "failed",
@@ -175,6 +178,7 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
   }
 
   const verified = receipt.isSuccess;
+  const busy = phase.at === "requesting" || phase.at === "attesting" || signingIn;
 
   return (
     <Panel className="max-w-2xl">
@@ -190,9 +194,9 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
 
       <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-muted">
         Originating and borrowing each require one verification, once, per
-        address. It proves a live human — nothing more. It is <em>not</em> KYC:
-        no name, no country, no document, and it says nothing about whether a
-        loan will be repaid.
+        address. A Selfie Check proves a live human is present — nothing more.
+        It is <em>not</em> KYC: no name, no country, no document, and it says
+        nothing about whether a loan will be repaid.
       </p>
 
       <div className="mt-5">
@@ -238,30 +242,41 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
             </Button>
           </div>
         ) : (
-          <IDKitWidget
-            app_id={APP_ID}
-            action={ACTION}
-            // Binds the proof to this address at World's end too, so a proof
-            // for one wallet cannot be replayed onto another.
-            signal={party}
-            verification_level={LEVEL}
-            bridge_url={BRIDGE_URL}
-            onSuccess={onWorldSuccess}
-          >
-            {({ open }: { open: () => void }) => (
-              <Button
-                tone="primary"
-                onClick={open}
-                disabled={phase.at === "attesting" || signingIn}
-              >
-                {signingIn
-                  ? "Sign in to continue…"
-                  : phase.at === "attesting"
-                    ? "Checking with World…"
-                    : "Verify with World ID"}
-              </Button>
-            )}
-          </IDKitWidget>
+          <>
+            <Button tone="primary" onClick={begin} disabled={busy}>
+              {phase.at === "requesting"
+                ? "Preparing the request…"
+                : phase.at === "attesting"
+                  ? "Checking with World…"
+                  : signingIn
+                    ? "Sign in to continue…"
+                    : "Verify with Selfie Check"}
+            </Button>
+
+            {request ? (
+              <IDKitRequestWidget
+                app_id={request.app_id}
+                action={request.action}
+                rp_context={request.rp_context}
+                // Selfie Check has no World ID 4.0 form yet, so the request has
+                // to admit the 3.0 proof the preset produces. Without this the
+                // widget asks for something nobody can answer.
+                allow_legacy_proofs
+                preset={selfieCheckLegacy({ signal: party })}
+                open={widgetOpen}
+                onOpenChange={setWidgetOpen}
+                // handleVerify runs before World App shows its success screen
+                // and may throw to reject the proof, so the attestation
+                // exchange belongs here rather than in onSuccess — a proof our
+                // backend refuses should not be celebrated first.
+                handleVerify={onVerify}
+                onSuccess={() => setWidgetOpen(false)}
+                onError={(code: IDKitErrorCodes) =>
+                  setPhase({ at: "failed", message: worldError(String(code)) })
+                }
+              />
+            ) : null}
+          </>
         )}
 
         {phase.at === "failed" ? (
@@ -296,22 +311,30 @@ export function SelfieCheckStep({ party }: { party: Address | undefined }) {
           <span className="text-muted">{ACTION}</span>
         </Row>
         <Row label="Credential">
-          <span className={LEVEL_IS_WEAK ? "text-warn" : "text-muted"}>
-            {LEVEL}
-            {LEVEL_IS_WEAK ? " · device, not personhood" : ""}
-          </span>
+          <span className="text-muted">Selfie Check · schema 11</span>
         </Row>
-        <Row label="Network">
-          <span className={IS_STAGING ? "text-warn" : "text-muted"}>
-            {IS_STAGING ? "staging · simulator only" : "production"}
-          </span>
-        </Row>
-        {party ? (
-          <Row label="Your address">
-            <span className="text-muted">{shortAddress(party)}</span>
-          </Row>
-        ) : null}
       </dl>
+
+      {/*
+        Said on the screen, not only in a doc. Someone reading this page should
+        not come away believing the system knows they are a unique human when
+        it knows something weaker and more useful: that a live person is here,
+        and that the same person came back.
+      */}
+      <div className="mt-4 rounded-card border border-line bg-raised px-3.5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Eyebrow>What this proves</Eyebrow>
+          <Chip>medium assurance</Chip>
+          <Chip>90-day validity</Chip>
+        </div>
+        <p className="mt-2 text-[12px] leading-relaxed text-muted">
+          A live human completed a face scan, and a returning human matches the
+          face enrolled. It is deliberately <em>not</em> a uniqueness proof —
+          World does not claim one person, one account for this credential, and
+          neither do we. It raises the cost of running many identities without
+          pretending to make it impossible.
+        </p>
+      </div>
     </Panel>
   );
 }
@@ -347,6 +370,35 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <dd className="font-mono text-[12px]">{children}</dd>
     </div>
   );
+}
+
+/**
+ * World App's own error codes, translated where the code alone does not say
+ * whose problem it is or what to do next. Anything unlisted is passed through
+ * — a code we have not seen is more useful verbatim than flattened into
+ * "something went wrong".
+ */
+function worldError(code: string): string {
+  switch (code) {
+    case "user_rejected":
+      return "You declined the check in World App. Nothing was recorded.";
+    case "credential_unavailable":
+      return "This World ID has no Selfie Check yet. World App will offer to enrol you — run it again and complete that step.";
+    case "feature_unavailable":
+      return "Selfie Check is not enabled for this app. That is a configuration problem on our side, not something you did.";
+    case "invalid_rp_signature":
+      return "The request was not signed correctly. That is a server configuration problem — WORLD_RP_SIGNING_KEY.";
+    case "unknown_rp":
+      return "World does not recognise this relying party. Check WORLD_RP_ID on the server.";
+    case "max_verifications_reached":
+      return "This action has already been verified as many times as it allows.";
+    case "user_presence_failed":
+      return "World App could not confirm a live person was present. Try again in better light.";
+    case "connection_failed":
+      return "The connection to World App dropped before it finished.";
+    default:
+      return `World App returned: ${code}`;
+  }
 }
 
 /**
