@@ -50,8 +50,34 @@ export class ChainExecutor implements Executor {
    * signature, and the contract re-derives the nonce itself. A compromised
    * agent key can pay a borrower's own debt early and nothing else.
    */
+  /**
+   * Pull a period under a standing permit. Nothing is carried: which period,
+   * how much and whether it is time are all decided by the contract from the
+   * note's own schedule, so a compromised agent key can only pay somebody's
+   * debt on time.
+   */
+  async collectScheduled(noteId: bigint, index: number): Promise<Hash> {
+    if (!this.collector) throw new Error("no RepaymentMandate address configured");
+
+    const { request } = await this.publicClient.simulateContract({
+      address: this.collector,
+      abi: mandateAbi,
+      functionName: "collectScheduled",
+      args: [noteId, index],
+      account: this.wallet.account as Account,
+    });
+
+    const hash = await this.wallet.writeContract(request as never);
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
+    if (receipt.status !== "success") throw new Error(`collectScheduled reverted in ${hash}`);
+    return hash;
+  }
+
   async collect(noteId: bigint, index: number, m: PeriodMandate): Promise<Hash> {
     if (!this.collector) throw new Error("no RepaymentMandate address configured");
+    // Only a signed mandate reaches here — a standing one goes through
+    // collectScheduled, which carries nothing.
+    if (!m.signature) throw new Error("collect() needs a signed mandate");
     const { v, r, s } = splitSignature(m.signature);
     const { request } = await this.publicClient.simulateContract({
       address: this.collector,

@@ -15,6 +15,8 @@ import type { NoteSource, PeriodMandate, ServiceableNote } from "./source";
 export interface Executor {
   settlePeriod(noteId: bigint, index: number): Promise<Hash>;
   collect(noteId: bigint, index: number, mandate: PeriodMandate): Promise<Hash>;
+  /** Pull a period under a standing permit. Nothing to present. */
+  collectScheduled(noteId: bigint, index: number): Promise<Hash>;
   markDelinquent(noteId: bigint, index: number): Promise<Hash>;
   markDefaulted(noteId: bigint): Promise<Hash>;
   gasBalance(): Promise<bigint>;
@@ -201,13 +203,18 @@ export async function send(
       return executor.markDelinquent(noteId, index);
     case "DEFAULT":
       return executor.markDefaulted(noteId);
-    case "COLLECT":
+    case "COLLECT": {
       // decide only returns COLLECT when it was handed a mandate, so this is
       // unreachable in the loop. It stays because `send` is called directly by
       // tests, and because an unchecked null here would be a send with no
       // authority behind it.
       if (!mandate) throw new Error("COLLECT decided with no mandate to collect");
+      // A standing permit has nothing to present: the contract reads the
+      // period, the amount and the timing from the note, so the agent names
+      // the period and supplies no authority of its own.
+      if (mandate.kind === "standing") return executor.collectScheduled(noteId, index);
       return executor.collect(noteId, index, mandate);
+    }
     case "WAIT":
       throw new Error("WAIT reached act(), which filters it");
     default: {

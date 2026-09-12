@@ -2,10 +2,17 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAccount, usePublicClient, useSignTypedData } from "wagmi";
+import {
+  useAccount,
+  usePublicClient,
+  useSignTypedData,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+} from "wagmi";
+import { hexToNumber, slice } from "viem";
 import type { Address, Hex } from "viem";
 import { REPAYMENT_MANDATE, USDC_ERC20 } from "@/lib/deployments";
-import { repaymentMandateAbi } from "@/lib/abis";
+import { repaymentMandateAbi, usdcPermitAbi } from "@/lib/abis";
 import { CHAIN } from "@/lib/chain";
 import { formatDuration, formatUsdc } from "@/lib/format";
 import { api } from "@/lib/api";
@@ -48,6 +55,42 @@ import {
 /** ERC-20 face is 6 decimals; `due` from the chain is 18-decimal native. */
 const SCALE = 10n ** 12n;
 
+/**
+ * How long a standing permit outlives the schedule it covers. Generous on
+ * purpose: a permit that lapses mid-loan stops automatic repayment silently,
+ * and the first anyone notices is a period marked late.
+ */
+const PERMIT_MARGIN_SECONDS = 90 * 24 * 60 * 60;
+
+/** When the last period of this note closes. */
+function lastEnd(note: MandateNote): number {
+  return note.periods.reduce((latest, p) => Math.max(latest, Number(p.end)), 0);
+}
+
+/**
+ * EIP-2612 takes v/r/s, not a 65-byte blob. Some signers produce a recovery id
+ * of 0 or 1 where the token expects 27 or 28 — the same normalisation the x402
+ * settler does, for the same reason.
+ */
+function splitSignature(signature: Hex): { r: Hex; s: Hex; v: number } {
+  const r = slice(signature, 0, 32);
+  const s = slice(signature, 32, 64);
+  let v = hexToNumber(slice(signature, 64, 65));
+  if (v < 27) v += 27;
+  return { r, s, v };
+}
+
+/** EIP-2612. One of these replaces every TransferWithAuthorization below. */
+const PERMIT_TYPES = {
+  Permit: [
+    { name: "owner", type: "address" },
+    { name: "spender", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+  ],
+} as const;
+
 const TYPES = {
   TransferWithAuthorization: [
     { name: "from", type: "address" },
@@ -77,6 +120,16 @@ export function MandateSigner({ note }: { note: MandateNote }) {
 
   const [phase, setPhase] = useState<Phase>({ at: "idle" });
   const [chosen, setChosen] = useState<number | null>(null);
+  /**
+   * Which authorisation the borrower is giving. "once" is a single permit
+   * covering the whole schedule; "perPeriod" is the single-use EIP-3009
+   * instruments, which are strictly narrower and strictly more signatures.
+   */
+  const [mode, setMode] = useState<"once" | "perPeriod">("once");
+
+  const { writeContractAsync } = useWriteContract();
+  const [authTx, setAuthTx] = useState<Hex | undefined>();
+  const authReceipt = useWaitForTransactionReceipt({ hash: authTx });
 
   // A missing list is not worth blocking on: the borrower can still sign, and
   // the server refuses anything it should not accept regardless of what the
@@ -103,6 +156,82 @@ export function MandateSigner({ note }: { note: MandateNote }) {
   const size = Math.min(chosen ?? defaultGroupSize(open.length), Math.max(open.length, 1));
   const groups = groupPeriods(open, size);
   const total = open.reduce((sum, p) => sum + BigInt(p.due), 0n);
+
+  /**
+   * One permit for the whole note.
+   *
+   * The signature is a ceiling and nothing else. What it can be spent on is
+   * decided on-chain by the note's own schedule: never before a period ends,
+   * never twice, never more than that period still owes. So a borrower signing
+   * once is not handing over a key to their wallet — they are handing over one
+   * that opens this note's schedule, one period at a time.
+   *
+   * Submitting it costs gas, which the borrower pays here. It could be relayed
+   * by anyone — `authorize` is permissionless precisely because the permit
+   * names its own spender — but a relayer is a service we do not run.
+   */
+  async function authoriseOnce() {
+    const token = await ensureSession();
+    if (!token) {
+      setPhase({ at: "failed", message: "Sign in with this wallet to continue." });
+      return;
+    }
+    if (!publicClient || !address) {
+      setPhase({ at: "failed", message: "No RPC connection." });
+      return;
+    }
+
+    setPhase({ at: "signing", done: 0, total: 1 });
+    try {
+      // Read both at signing time. The nonce increments on every permit, and
+      // what the schedule still owes shrinks as periods settle — a cached
+      // figure would authorise the wrong amount or fail to verify at all.
+      const [nonce, owed] = await Promise.all([
+        publicClient.readContract({
+          address: USDC_ERC20,
+          abi: usdcPermitAbi,
+          functionName: "nonces",
+          args: [address],
+        }),
+        publicClient.readContract({
+          address: REPAYMENT_MANDATE,
+          abi: repaymentMandateAbi,
+          functionName: "outstanding",
+          args: [BigInt(note.noteId)],
+        }),
+      ]);
+
+      // Outlives the schedule by a margin, because a permit that expires
+      // mid-loan silently stops automatic repayment and the first anyone
+      // notices is a period marked late.
+      const deadline = BigInt(lastEnd(note) + PERMIT_MARGIN_SECONDS);
+
+      const signature = await signTypedDataAsync({
+        domain: { name: "USDC", version: "2", chainId: CHAIN.id, verifyingContract: USDC_ERC20 },
+        types: PERMIT_TYPES,
+        primaryType: "Permit",
+        message: {
+          owner: address as Address,
+          spender: REPAYMENT_MANDATE,
+          value: owed,
+          nonce,
+          deadline,
+        },
+      });
+
+      const { r, s, v } = splitSignature(signature);
+      const hash = await writeContractAsync({
+        address: REPAYMENT_MANDATE,
+        abi: repaymentMandateAbi,
+        functionName: "authorize",
+        args: [BigInt(note.noteId), owed, deadline, v, r, s],
+      });
+      setAuthTx(hash);
+      setPhase({ at: "done", count: 1 });
+    } catch (e) {
+      setPhase({ at: "failed", message: describe(e) });
+    }
+  }
 
   async function authorise() {
     const token = await ensureSession();
@@ -227,6 +356,49 @@ export function MandateSigner({ note }: { note: MandateNote }) {
       {open.length > 1 ? (
         <div className="mt-5 border-t border-line pt-4">
           <Field
+            label="How you authorise"
+            hint="Both are gasless to sign. Neither lets anyone take a different amount, from a different account, or before it is owed."
+          >
+            <Select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as "once" | "perPeriod")}
+              disabled={phase.at === "signing"}
+            >
+              <option value="once">Once, for the whole schedule — 1 signature</option>
+              <option value="perPeriod">
+                Period by period — {groups.length} signature{groups.length === 1 ? "" : "s"}
+              </option>
+            </Select>
+          </Field>
+
+          {mode === "once" ? (
+            <div className="mt-3 space-y-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip tone="accent">1 signature</Chip>
+                <Chip>nothing paid early</Chip>
+                <Chip>+1 transaction</Chip>
+              </div>
+              <p className="text-[12px] leading-relaxed text-muted">
+                One signature authorises this note&apos;s schedule and nothing
+                else. The amount is a ceiling — {formatUsdc(total)} — and the
+                contract may only draw on it period by period, never before a
+                period has ended, never twice, and never more than that period
+                still owes. A period you pay by hand is skipped rather than
+                charged again.
+              </p>
+              <p className="text-[12px] leading-relaxed text-muted">
+                Submitting it is one transaction, so this costs a little gas. The
+                per-period option costs none, and{" "}
+                {groups.length === 1 ? "one signature" : `${groups.length} signatures`}.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {open.length > 1 && mode === "perPeriod" ? (
+        <div className="mt-4">
+          <Field
             label="Periods per signature"
             hint="A signature can settle several periods at once, because an overpayment rolls forward into the periods behind it."
           >
@@ -308,14 +480,22 @@ export function MandateSigner({ note }: { note: MandateNote }) {
         <div className="mt-4">
           <Button
             tone="primary"
-            onClick={() => void authorise()}
-            disabled={phase.at === "signing" || signingIn || lodged === null}
+            onClick={() => void (mode === "once" ? authoriseOnce() : authorise())}
+            disabled={
+              phase.at === "signing" || signingIn || lodged === null || authReceipt.isLoading
+            }
           >
             {signingIn
               ? "Sign in to continue…"
-              : phase.at === "signing"
-                ? `Signature ${phase.done + 1} of ${phase.total}…`
-                : `Authorise ${formatUsdc(total)} in ${groups.length} signature${groups.length === 1 ? "" : "s"}`}
+              : authReceipt.isLoading
+                ? "Recording the authorisation…"
+                : phase.at === "signing"
+                  ? mode === "once"
+                    ? "Confirm in wallet…"
+                    : `Signature ${phase.done + 1} of ${phase.total}…`
+                  : mode === "once"
+                    ? `Authorise ${formatUsdc(total)} in one signature`
+                    : `Authorise ${formatUsdc(total)} in ${groups.length} signature${groups.length === 1 ? "" : "s"}`}
           </Button>
         </div>
       ) : null}
@@ -323,7 +503,12 @@ export function MandateSigner({ note }: { note: MandateNote }) {
       {phase.at === "failed" ? (
         <p className="mt-3 text-[12px] leading-relaxed text-danger">{phase.message}</p>
       ) : null}
-      {phase.at === "done" && phase.count > 0 ? (
+      {authReceipt.isSuccess ? (
+        <p className="mt-3 text-[12px] leading-relaxed text-accent">
+          Authorised for the whole schedule. The agent collects each period when
+          it falls due — nothing earlier, and nothing you have already paid.
+        </p>
+      ) : phase.at === "done" && phase.count > 0 && mode === "perPeriod" ? (
         <p className="mt-3 text-[12px] leading-relaxed text-accent">
           Authorised. The agent collects each one when its period falls due.
         </p>

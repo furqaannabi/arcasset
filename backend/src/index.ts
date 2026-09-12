@@ -37,6 +37,11 @@ if (config.agentKey && wallet) {
     deployment.NoteFactory,
     deployment.ServicingRelay,
     deployment.RepaymentVault,
+    // Without this the agent cannot see a standing permit, and a borrower who
+    // authorised the whole schedule in one signature would watch every period
+    // go uncollected.
+    deployment.RepaymentMandate,
+    config.usdcErc20,
   );
   runner = new AgentRunner(
     source,

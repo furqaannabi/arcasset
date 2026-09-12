@@ -40,6 +40,7 @@ class FakeExecutor implements Executor {
   delinquents: Array<[bigint, number]> = [];
   defaults: bigint[] = [];
   collects: Array<[bigint, number, bigint]> = [];
+  scheduled: Array<[bigint, number]> = [];
   inFlight = 0;
   maxConcurrent = 0;
   constructor(
@@ -69,6 +70,9 @@ class FakeExecutor implements Executor {
   }
   collect(id: bigint, i: number, m: PeriodMandate) {
     return this.record(() => this.collects.push([id, i, m.value]));
+  }
+  collectScheduled(id: bigint, i: number) {
+    return this.record(() => this.scheduled.push([id, i]));
   }
   async gasBalance() {
     return this.balance;
@@ -228,6 +232,7 @@ describe("failure handling", () => {
 
 describe("dispatch", () => {
   const mandate = (over: Partial<PeriodMandate> = {}): PeriodMandate => ({
+    kind: "signed",
     periodIndex: 0,
     value: 1_000_000n,
     validAfter: NOW - DAY,
@@ -276,6 +281,7 @@ describe("dispatch", () => {
 
 describe("mandates in the loop", () => {
   const m = (over: Partial<PeriodMandate> = {}): PeriodMandate => ({
+    kind: "signed",
     periodIndex: 0,
     value: 1_000_000n,
     validAfter: NOW - DAY,
@@ -310,5 +316,55 @@ describe("mandates in the loop", () => {
     );
     expect(ex.collects).toEqual([]);
     expect(ex.delinquents).toEqual([[1n, 0]]);
+  });
+});
+
+/**
+ * A standing permit is the one-signature path: the borrower authorised the
+ * whole schedule once, and the agent presents nothing. Getting the dispatch
+ * wrong here would send a signed mandate's arguments to a function that takes
+ * none, or worse, present an empty signature to the token.
+ */
+describe("standing authorisations in the loop", () => {
+  const standing = (over: Partial<PeriodMandate> = {}): PeriodMandate => ({
+    kind: "standing",
+    periodIndex: 0,
+    // A ceiling for the whole note, not this period's amount.
+    value: 10_000_000n,
+    validAfter: NOW - DAY,
+    validBefore: Number.MAX_SAFE_INTEGER,
+    ...over,
+  });
+
+  const shortPeriod = () => [period({ end: NOW - 5 * DAY, paid: 0n })];
+
+  test("collects through the scheduled path, carrying no signature", async () => {
+    const ex = new FakeExecutor();
+    await tick(
+      new FakeSource([entry(note(), shortPeriod(), { 0: standing() })]),
+      ex,
+      config(),
+      NOW,
+    );
+
+    expect(ex.scheduled).toEqual([[1n, 0]]);
+    expect(ex.collects).toEqual([]);
+    expect(ex.delinquents).toEqual([]);
+  });
+
+  test("a signed mandate still goes the signed way", async () => {
+    const ex = new FakeExecutor();
+    const signed: PeriodMandate = {
+      kind: "signed",
+      periodIndex: 0,
+      value: 1_000_000n,
+      validAfter: NOW - DAY,
+      validBefore: NOW + DAY,
+      signature: ("0x" + "cd".repeat(65)) as `0x${string}`,
+    };
+    await tick(new FakeSource([entry(note(), shortPeriod(), { 0: signed })]), ex, config(), NOW);
+
+    expect(ex.collects).toEqual([[1n, 0, 1_000_000n]]);
+    expect(ex.scheduled).toEqual([]);
   });
 });
