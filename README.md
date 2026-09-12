@@ -233,11 +233,6 @@ is in the repo and its bytecode is reproducible with the pinned toolchain.
 | `RepaymentMandate` | [`0x72eF8CC94418cf4460979D4840432f5C4fe426f5`](https://testnet.arcscan.app/address/0x72eF8CC94418cf4460979D4840432f5C4fe426f5) | Pulls a repayment the borrower signed for |
 | `PersonhoodVerifier` | [`0x89bFE1652c0fB4958701ed5D7e8Ca5c580d67250`](https://testnet.arcscan.app/address/0x89bFE1652c0fB4958701ed5D7e8Ca5c580d67250) | `AttestedVerifier` — see the caveat below |
 
-The mandate this replaced, [`0x81b0334115f5641dDE86D7696C52020558Ab84a5`](https://testnet.arcscan.app/address/0x81b0334115f5641dDE86D7696C52020558Ab84a5),
-is retired but still indexed. Twelve repayments were collected through it, and
-a redeploy is not an event that should change who paid — see
-[03 — Subgraph](docs/03-subgraph.md).
-
 Deployed and wired by `contracts/script/deploy-testnet.sh`, which refuses to run
 unless the RPC reports chain 5042002. Every wiring edge was then checked by
 address against the live chain, and the sybil property was then exercised on it
@@ -437,7 +432,7 @@ once. `bun run sync` makes the manifest follow the deployment file, and
 ### Getting testnet funds
 
 The deployer needs native USDC on Arc testnet — it is both the gas token and the
-settlement asset. Contract deployment cost 0.18 USDC in total.
+settlement asset.
 
 ```bash
 cast wallet import <name> --interactive     # prompts, nothing hits your history
