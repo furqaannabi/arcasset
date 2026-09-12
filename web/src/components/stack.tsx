@@ -6,30 +6,20 @@ import type { ReactNode } from "react";
  * path, World gates the write side — and each badge sits on the thing it is
  * responsible for.
  *
- * The Graph's mark is the official one. Arc's and World's are still geometric
- * stand-ins — swap them for the real brand SVGs before submitting; an
- * approximated logo is worse than none.
+ * The Graph's and Arc's marks are the real ones. World's is still a geometric
+ * stand-in — swap it for the real brand SVG before submitting; an approximated
+ * logo is worse than none.
+ *
+ * Arc's arrives as a white-on-transparent lockup, so it is drawn as a mask
+ * rather than an <img>: the shape is painted with currentColor, which means it
+ * inherits the theme exactly like the two inline SVGs beside it. Rendering the
+ * white pixels directly would leave it invisible on the light canvas, and
+ * recolouring with a filter would only work for one theme at a time.
  */
 export type Sponsor = "arc" | "graph" | "world";
 
-const MARKS: Record<Sponsor, { viewBox: string; art: ReactNode }> = {
-  // Stand-in: an open ring, settlement that moves and comes back around.
-  arc: {
-    viewBox: "0 0 16 16",
-    art: (
-      <circle
-        cx="8"
-        cy="8"
-        r="5.4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeDasharray="21 13"
-        transform="rotate(-50 8 8)"
-      />
-    ),
-  },
+/** The sponsors whose mark is inline SVG. Arc's is a mask — see below. */
+const MARKS: Record<Exclude<Sponsor, "arc">, { viewBox: string; art: ReactNode }> = {
   graph: {
     viewBox: "0 0 32 32",
     art: (
@@ -74,6 +64,33 @@ export function StackMark({
   size?: number;
   className?: string;
 }) {
+  if (sponsor === "arc") {
+    /**
+     * The supplied asset is white on transparent. Masking paints its shape
+     * with currentColor instead of its own pixels, so it darkens on the light
+     * theme and brightens on the dark one without a second file — and it sits
+     * at the same colour as the label beside it, which an <img> could not do.
+     */
+    return (
+      <span
+        aria-hidden="true"
+        className={`shrink-0 bg-current ${className}`}
+        style={{
+          width: size,
+          height: size,
+          maskImage: "url(/arc-mark.png)",
+          WebkitMaskImage: "url(/arc-mark.png)",
+          maskSize: "contain",
+          WebkitMaskSize: "contain",
+          maskRepeat: "no-repeat",
+          WebkitMaskRepeat: "no-repeat",
+          maskPosition: "center",
+          WebkitMaskPosition: "center",
+        }}
+      />
+    );
+  }
+
   const mark = MARKS[sponsor];
   return (
     <svg
