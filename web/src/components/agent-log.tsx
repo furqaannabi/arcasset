@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatClock, formatUsdc, shortAddress } from "@/lib/format";
+import { collapse, readable } from "@/lib/agent-log";
 
 /**
  * The servicing agent's decision log, live.
@@ -36,6 +37,15 @@ type LogLine = {
 type LogResponse = { running: boolean; ticks?: number; log: LogLine[] };
 type Health = { agent: { running: boolean; address?: string } };
 
+/**
+ * A decision the agent grew that this page has not heard of should still
+ * render, in the colour that claims least — a missing key must not blank the
+ * hero panel.
+ */
+function tone(decision: string): string {
+  return TONE[decision as Decision] ?? "text-muted";
+}
+
 const TONE: Record<Decision, string> = {
   SETTLE: "text-accent",
   COLLECT: "text-accent",
@@ -59,7 +69,14 @@ export function AgentLog() {
     retry: false,
   });
 
-  const lines = log.data?.log ?? [];
+  /**
+   * The agent re-decides every tick, so a note it is waiting on produces the
+   * same line every sixty seconds. Nine rows of three repeated decisions reads
+   * as a stuck process rather than a patient one — which is the opposite of
+   * what this panel is here to show. Consecutive repeats collapse into one
+   * with a count, and the timestamp shown is the most recent.
+   */
+  const lines = collapse(log.data?.log ?? []);
   const address = health.data?.agent.address;
   const live = log.data?.running === true && lines.length > 0;
 
@@ -96,8 +113,13 @@ export function AgentLog() {
                 {l.noteId === "-" ? "agent" : `note #${l.noteId}`}
                 {l.period === null ? "" : ` · p${l.period}`}
               </span>
-              <span className={`shrink-0 ${TONE[l.decision]}`}>{l.decision}</span>
-              <span className="min-w-0 flex-1 truncate text-muted">{l.reason}</span>
+              <span className={`shrink-0 ${tone(l.decision)}`}>{l.decision}</span>
+              <span className="min-w-0 flex-1 truncate text-muted">{readable(l.reason)}</span>
+              {l.repeats > 1 ? (
+                <span className="shrink-0 text-faint tnum" title={`decided ${l.repeats} times`}>
+                  ×{l.repeats}
+                </span>
+              ) : null}
               {l.due !== undefined ? (
                 <span className="hidden shrink-0 text-faint tnum lg:inline">
                   {formatUsdc(BigInt(l.due))}

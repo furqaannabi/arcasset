@@ -25,6 +25,7 @@ runs the other way.
 | 08 | [Handoff](08-handoff.md) | Open work in Apurva's lane — subgraph, frontend, what the redeploy moved |
 | 09 | [Automatic repayment](09-mandate.md) | Signed mandates: storage, lodging, collection, and the signing UI |
 | 10 | [World feedback](10-world-feedback.md) | Selfie Check integration report — docs, portal, sandbox, what cost us time |
+| 11 | [Demo runbook](11-demo.md) | The four-minute cut, shot by shot, against what is actually live |
 
 ## Status legend
 

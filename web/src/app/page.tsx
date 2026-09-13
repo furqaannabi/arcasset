@@ -3,7 +3,9 @@ import { Button, Eyebrow } from "@/components/ui";
 import { StackStrip, StackBadge } from "@/components/stack";
 import { Lifecycle } from "@/components/lifecycle";
 import { AgentLog } from "@/components/agent-log";
+import { ScheduleRibbon } from "@/components/schedule-ribbon";
 import { IntelPreview } from "@/components/intel-preview";
+import { ProtocolRecord } from "@/components/protocol-record";
 import { CHAIN } from "@/lib/chain";
 
 const CONSUMERS = [
@@ -36,38 +38,112 @@ const NOT = [
 export default function Home() {
   return (
     <div className="space-y-24">
-      {/* Hero — the agent doing its job, because that is the product */}
-      <section className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
-        <div className="space-y-6">
-          <Eyebrow>Tokenized private credit · {CHAIN.name}</Eyebrow>
-          <h1 className="text-[clamp(36px,5.2vw,58px)] leading-[1.02] font-medium tracking-[-0.03em] text-balance">
-            Servicing runs itself.
-            <br />
-            <span className="text-muted">The record it leaves is the product.</span>
-          </h1>
-          <p className="max-w-xl text-[15px] leading-relaxed text-muted">
-            An originator tokenizes a loan they already made. An agent collects,
-            distributes and marks delinquency on its own — and every period it
-            settles becomes repayment history somebody will pay to read.
-          </p>
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <Link href="/propose">
-              <Button tone="primary">Propose a note</Button>
-            </Link>
-            <Link href="/intel">
-              <Button tone="secondary">See what it sells</Button>
-            </Link>
+      {/*
+        Hero.
+        
+        The ribbon behind it is the loans themselves — one strand per note, one
+        rung per period, coloured by what happened. It is the only image on
+        this page, it is not decoration, and nobody else could draw it because
+        nobody else has the data.
+
+        Full-bleed on a page whose content is otherwise held to max-w-6xl, so
+        the margins are negative rather than the layout being rebuilt around
+        one section.
+      */}
+      <section className="relative -mx-6 -mt-12 overflow-hidden px-6 pt-12">
+        <div className="pointer-events-none absolute inset-0 -z-10">
+          <ScheduleRibbon />
+          {/* The headline has to win. This keeps the lattice off the text
+              without dimming the whole figure. */}
+          <div className="absolute inset-0 bg-gradient-to-r from-canvas via-canvas/92 via-45% to-canvas/25" />
+        </div>
+
+        <div className="mx-auto max-w-6xl">
+          {/*
+            Clamped rather than a bare vh: on a tall or portrait window 68vh is
+            most of a metre of empty canvas, and the fold stops doing its job
+            of promising there is something below it.
+          */}
+          <div className="flex min-h-[clamp(520px,68vh,760px)] max-w-3xl flex-col justify-center py-16">
+            <Eyebrow>Tokenized private credit · {CHAIN.name}</Eyebrow>
+
+            <h1 className="mt-6 text-[clamp(42px,7vw,86px)] leading-[0.95] font-medium tracking-[-0.04em] text-balance">
+              Servicing runs itself.
+              <br />
+              <span className="text-muted">The record it leaves</span>
+              <br />
+              <span className="text-muted">is the product.</span>
+            </h1>
+
+            <p className="mt-8 max-w-lg text-[15px] leading-relaxed text-muted">
+              An originator tokenizes a loan they already made. An agent
+              collects, distributes and marks delinquency on its own — and
+              every period it settles becomes repayment history somebody will
+              pay to read.
+            </p>
+
+            <div className="mt-9 flex flex-wrap items-center gap-3">
+              <Link href="/propose">
+                <Button tone="primary">Propose a note</Button>
+              </Link>
+              <Link href="/intel">
+                <Button tone="secondary">See what it sells</Button>
+              </Link>
+            </div>
+
+            {/*
+              Said once, quietly, at the bottom of the fold — the page spends
+              the rest of its length proving it rather than repeating it.
+            */}
+            <p className="mt-16 max-w-md text-[12px] leading-relaxed text-faint">
+              Every figure on this page is live: the lattice above, the log
+              below, the record after it and the prices at the end are read
+              from Arc and from the index. There are no mockups here.
+            </p>
           </div>
+        </div>
+      </section>
+
+      {/* The agent, working, directly under the fold. */}
+      <section className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-3">
+          <div className="max-w-xl space-y-2">
+            <Eyebrow>00 / Right now</Eyebrow>
+            <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
+              Nobody is touching this.
+            </h2>
+          </div>
+          <StackBadge sponsor="arc" role="settles in native USDC" />
         </div>
 
         <AgentLog />
+      </section>
+
+      {/*
+        Evidence before argument. A reader who goes no further than this
+        section has seen the claim tested: an agent settled these periods,
+        flagged these two, and carried these notes to maturity with nobody
+        watching.
+      */}
+      <section className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-3">
+          <div className="max-w-xl space-y-2">
+            <Eyebrow>01 / The record</Eyebrow>
+            <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
+              This already happened, without anyone watching.
+            </h2>
+          </div>
+          <StackBadge sponsor="graph" role="every figure, read live" />
+        </div>
+
+        <ProtocolRecord />
       </section>
 
       {/* The three-signature gate */}
       <section className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-3">
           <div className="max-w-xl space-y-2">
-            <Eyebrow>01 / Issuance</Eyebrow>
+            <Eyebrow>02 / Issuance</Eyebrow>
             <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
               Nothing mints until three people say yes.
             </h2>
@@ -91,7 +167,7 @@ export default function Home() {
       <section className="space-y-6">
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-3">
           <div className="max-w-xl space-y-2">
-            <Eyebrow>02 / Read path</Eyebrow>
+            <Eyebrow>03 / Read path</Eyebrow>
             <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
               One index, three consumers.
             </h2>
@@ -118,7 +194,7 @@ export default function Home() {
       {/* The data product, shown rather than described */}
       <section className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,480px)]">
         <div className="space-y-5">
-          <Eyebrow>03 / The asset</Eyebrow>
+          <Eyebrow>04 / The asset</Eyebrow>
           <h2 className="text-[26px] leading-tight font-medium tracking-tight text-balance">
             Repayment history, priced per query.
           </h2>
@@ -149,7 +225,7 @@ export default function Home() {
       {/* Honest boundaries */}
       <section className="space-y-6">
         <div className="border-b border-line pb-3">
-          <Eyebrow>04 / Boundaries</Eyebrow>
+          <Eyebrow>05 / Boundaries</Eyebrow>
           <h2 className="mt-2 text-[26px] leading-tight font-medium tracking-tight">
             What this is not.
           </h2>

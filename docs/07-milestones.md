@@ -82,6 +82,12 @@ returning real data. Those two are the submission. Everything else is support.
 
 ## Demo script (under 4 min)
 
+> **Superseded by [11 — Demo runbook](11-demo.md).** This version predates
+> Selfie Check, signed mandates, the intelligence storefront and the current
+> landing page, and several of its beats no longer match the app. Kept because
+> the reasoning about ordering and cut lines still holds.
+
+
 ETHGlobal caps submission videos at **4 minutes** and verifies manually that the
 video was not sped up. Budget 3:35 and keep the rest as headroom — an overlength
 video is a disqualification, not a deduction.
